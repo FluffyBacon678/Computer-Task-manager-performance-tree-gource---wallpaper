@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reactive Source Tree</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+      }
+
+      body {
+        font-family: "Cascadia Mono", Consolas, monospace;
+      }
+
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      #debug-overlay {
+        position: fixed;
+        top: 10px;
+        left: 12px;
+        z-index: 10;
+        display: none;
+        max-width: min(460px, calc(100vw - 24px));
+        color: rgba(205, 239, 255, 0.82);
+        font: 12px/1.45 "Cascadia Mono", Consolas, monospace;
+        text-shadow: 0 0 8px rgba(0, 200, 255, 0.5);
+        pointer-events: none;
+        white-space: pre;
+      }
+
+      #file-mode-warning {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        place-items: center;
+        padding: 32px;
+        color: #d7f6ff;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(0, 200, 255, 0.16), transparent 36%),
+          #03040a;
+        font: 15px/1.55 "Cascadia Mono", Consolas, monospace;
+        text-align: center;
+      }
+
+      body.show-file-warning #file-mode-warning {
+        display: grid;
+      }
+
+      #file-mode-warning strong {
+        display: block;
+        margin-bottom: 10px;
+        color: #fff;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      #file-mode-warning code {
+        display: inline-block;
+        margin: 6px 0;
+        padding: 4px 7px;
+        color: #ffffff;
+        background: rgba(0, 200, 255, 0.13);
+        border: 1px solid rgba(0, 200, 255, 0.22);
+        border-radius: 4px;
+      }
+    </style>
+    <script>
+      (() => {
+        const path = window.location.pathname.replace(/\\/g, '/').toLowerCase();
+        const isSourceFileOpen =
+          window.location.protocol === 'file:' &&
+          path.endsWith('/reactive-source-tree/index.html') &&
+          !path.includes('/dist/');
+
+        if (isSourceFileOpen) {
+          document.documentElement.classList.add('source-file-open');
+          window.addEventListener('DOMContentLoaded', () => {
+            document.body.classList.add('show-file-warning');
+          });
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="file-mode-warning">
+      <div>
+        <strong>Reactive Source Tree needs the Vite dev server or the packaged dist build.</strong>
+        Do not open the source <code>index.html</code> directly from <code>file://</code>.<br />
+        For browser testing run <code>npm.cmd run dev</code> and open <code>http://127.0.0.1:5173/</code>.<br />
+        For Wallpaper Engine run <code>npm.cmd run package</code> and import <code>dist/index.html</code>.
+      </div>
+    </div>
+    <div id="debug-overlay"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

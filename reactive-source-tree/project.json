@@ -1,0 +1,131 @@
+{
+  "title": "Reactive Source Tree",
+  "description": "A neon, audio-reactive source-tree system constellation for Wallpaper Engine.",
+  "file": "index.html",
+  "preview": "preview.png",
+  "general": {
+    "properties": {
+      "intensity": {
+        "text": "Intensity",
+        "type": "slider",
+        "value": 1,
+        "min": 0.2,
+        "max": 2,
+        "step": 0.05
+      },
+      "particle_amount": {
+        "text": "Particles",
+        "type": "slider",
+        "value": 1,
+        "min": 0.2,
+        "max": 2,
+        "step": 0.05
+      },
+      "graph_density": {
+        "text": "Graph Density",
+        "type": "slider",
+        "value": 1,
+        "min": 0.4,
+        "max": 1.8,
+        "step": 0.05
+      },
+      "glow_strength": {
+        "text": "Glow Strength",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "animation_speed": {
+        "text": "Animation Speed",
+        "type": "slider",
+        "value": 1,
+        "min": 0.25,
+        "max": 2,
+        "step": 0.05
+      },
+      "camera_drift": {
+        "text": "Camera Drift",
+        "type": "bool",
+        "value": true
+      },
+      "show_labels": {
+        "text": "Labels",
+        "type": "bool",
+        "value": true
+      },
+      "show_system_leaf_labels": {
+        "text": "System Leaf Labels",
+        "type": "bool",
+        "value": false
+      },
+      "palette_mode": {
+        "text": "Palette",
+        "type": "combo",
+        "value": "visual-source",
+        "options": [
+          {
+            "label": "Visual Source",
+            "value": "visual-source"
+          },
+          {
+            "label": "Cyber Neon",
+            "value": "cyber-neon"
+          },
+          {
+            "label": "Purple/Cyan",
+            "value": "purple-cyan"
+          },
+          {
+            "label": "Warm GPU",
+            "value": "warm-gpu"
+          },
+          {
+            "label": "Matrix Green",
+            "value": "matrix-green"
+          },
+          {
+            "label": "Custom",
+            "value": "custom"
+          }
+        ]
+      },
+      "enable_audio": {
+        "text": "Audio Reaction",
+        "type": "bool",
+        "value": true
+      },
+      "enable_telemetry": {
+        "text": "Telemetry WebSocket",
+        "type": "bool",
+        "value": true
+      },
+      "enable_live_processes": {
+        "text": "Live Process Leaves",
+        "type": "bool",
+        "value": true
+      },
+      "show_process_names": {
+        "text": "Show Process Names",
+        "type": "bool",
+        "value": true
+      },
+      "telemetry_url": {
+        "text": "Telemetry URL",
+        "type": "textinput",
+        "value": "ws://127.0.0.1:17890"
+      },
+      "debug_overlay": {
+        "text": "Debug Overlay",
+        "type": "bool",
+        "value": false
+      },
+      "low_performance_mode": {
+        "text": "Low Performance Mode",
+        "type": "bool",
+        "value": false
+      }
+    }
+  }
+}
