@@ -1,20 +1,16 @@
 import { Graphics } from 'pixi.js';
 
 export function drawGlowCircle(graphics, x, y, radius, color, alpha = 1, strength = 1, steps = 3) {
-  // More, finely-spaced layers with a smooth (1-t)^2 falloff so the halo reads as a soft
-  // gradient instead of a few hard-edged stacked discs. Tiny/low-perf nodes keep the
-  // cheap version since their banding is not visible anyway.
-  const layers = steps <= 2 ? steps : steps + 3;
+  // Flat-filled discs can't make a true gradient, so each disc adds a hard edge. Use the
+  // FEWEST that still read as glow — one broad faint halo + one tighter halo + the solid
+  // core — so a node looks like a glowing dot, not a bullseye of concentric rings.
   const reach = radius * (1.4 + steps * 0.9);
-  for (let i = layers; i >= 1; i -= 1) {
-    const t = i / layers;
-    const r = radius + (reach - radius) * t;
-    const falloff = (1 - t) * (1 - t);
-    graphics.beginFill(color, alpha * 0.085 * strength * falloff);
-    graphics.drawCircle(x, y, r);
-    graphics.endFill();
-  }
-
+  graphics.beginFill(color, alpha * 0.05 * strength);
+  graphics.drawCircle(x, y, reach);
+  graphics.endFill();
+  graphics.beginFill(color, alpha * 0.1 * strength);
+  graphics.drawCircle(x, y, radius + (reach - radius) * 0.42);
+  graphics.endFill();
   graphics.beginFill(color, alpha);
   graphics.drawCircle(x, y, radius);
   graphics.endFill();
