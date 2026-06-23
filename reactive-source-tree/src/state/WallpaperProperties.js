@@ -60,8 +60,8 @@ export class WallpaperProperties {
       propertyValue(properties.show_process_names, c.showProcessNames),
       c.showProcessNames
     );
-    c.liveProcessCount = Math.round(
-      clamp(Number(propertyValue(properties.live_process_count, c.liveProcessCount)), 4, 14)
+    c.maxProcesses = Math.round(
+      clamp(Number(propertyValue(properties.max_processes, c.maxProcesses)), 6, 40)
     );
     c.labelDensity = clamp(Number(propertyValue(properties.label_density, c.labelDensity)), 0.3, 1.5);
     c.debugOverlay = toBool(propertyValue(properties.debug_overlay, c.debugOverlay), c.debugOverlay);

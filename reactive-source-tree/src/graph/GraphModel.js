@@ -127,6 +127,23 @@ function leafMetric(node) {
   return node.category;
 }
 
+// Each process becomes ONE node under its busiest branch. Weights stop resident RAM
+// (which is large for almost every process) from swallowing every node onto the RAM
+// branch — they mirror the helper's process "score" so the spread reads as "actively
+// using" rather than "merely holding memory".
+const BRANCH_WEIGHTS = { cpu: 1.35, ram: 0.85, gpu: 1.15, disk: 0.9 };
+
+// Where each branch's process fan sits, relative to the branch node's own angle.
+const BRANCH_PLACEMENT = {
+  cpu: { baseAngle: -0.4, step: 0.05 },
+  ram: { baseAngle: -0.34, step: 0.05 },
+  gpu: { baseAngle: -0.3, step: 0.055 },
+  disk: { baseAngle: -0.1, step: 0.055 }
+};
+
+// Processes below this weighted score are treated as "not enough to display".
+const PROCESS_FLOOR = 0.01;
+
 export class GraphModel {
   constructor(config, palette) {
     this.config = config;
@@ -139,9 +156,10 @@ export class GraphModel {
     this.dynamicNodeIds = new Set();
     this.dynamicSignature = '';
     this.lastDensity = 0;
-    // Stable angular slot per process (metricKey -> Map<pid, slotIndex>) so a process
-    // keeps its position between frames instead of jumping as rankings shift.
-    this.processSlotState = new Map();
+    // Per-process placement state so balls keep their position frame to frame:
+    this.branchSlots = new Map();        // branch -> Map<pid, slotIndex>
+    this.processHome = new Map();        // pid -> current home branch (hysteresis)
+    this.visibleProcessPids = new Set(); // membership hysteresis for the global top-N
     this.build(config, palette);
   }
 
@@ -155,7 +173,9 @@ export class GraphModel {
     this.leavesByCategory.clear();
     this.dynamicNodeIds.clear();
     this.dynamicSignature = '';
-    this.processSlotState.clear();
+    this.branchSlots.clear();
+    this.processHome.clear();
+    this.visibleProcessPids.clear();
     this.lastDensity = config.graphDensity;
 
     const root = this.addNode({
@@ -310,87 +330,132 @@ export class GraphModel {
     return true;
   }
 
-  // Pick which processes to show for a branch with hysteresis + stable angular slots.
-  // A process keeps its slot frame-to-frame, and only leaves once it drops out of a
-  // grace band below the cut-off, so the live nodes stop flickering in and out.
-  selectProcesses(processes, metric, limit, threshold) {
+  // Stable global membership for the visible process set. Rank by score, keep incumbents
+  // within a grace band so the set only changes when rankings shift a lot — that is what
+  // makes idle/low processes "disappear only when things get cluttered".
+  selectTopProcesses(processes, limit) {
     const sorted = processes
-      .filter((process) => process && process[metric] > threshold)
-      .sort((a, b) => b[metric] - a[metric]);
+      .filter((process) => process && process.score > PROCESS_FLOOR)
+      .sort((a, b) => b.score - a.score);
 
     const rankByPid = new Map();
     sorted.forEach((process, rank) => rankByPid.set(process.pid, rank));
+    const grace = limit + 6;
 
-    const slotMap = this.processSlotState.get(metric) ?? new Map();
-    const keepBand = limit + 4; // a member survives until it falls below this rank
-
-    const retained = [];
-    const usedSlots = new Set();
-    const retainedPids = new Set();
-    for (const [pid, slot] of slotMap) {
-      const rank = rankByPid.get(pid);
-      if (rank !== undefined && rank < keepBand && slot < limit) {
-        retained.push({ process: sorted[rank], slot });
-        usedSlots.add(slot);
-        retainedPids.add(pid);
+    const result = [];
+    const chosen = new Set();
+    for (const process of sorted) {
+      if (result.length >= limit) break;
+      if (this.visibleProcessPids.has(process.pid) && rankByPid.get(process.pid) < grace) {
+        result.push(process);
+        chosen.add(process.pid);
+      }
+    }
+    for (const process of sorted) {
+      if (result.length >= limit) break;
+      if (!chosen.has(process.pid)) {
+        result.push(process);
+        chosen.add(process.pid);
       }
     }
 
-    const freeSlots = [];
-    for (let slot = 0; slot < limit; slot += 1) {
-      if (!usedSlots.has(slot)) freeSlots.push(slot);
-    }
-
-    const added = [];
-    let next = 0;
-    for (const process of sorted) {
-      if (next >= freeSlots.length) break;
-      if (retainedPids.has(process.pid)) continue;
-      added.push({ process, slot: freeSlots[next] });
-      next += 1;
-    }
-
-    const result = [...retained, ...added];
-    this.processSlotState.set(metric, new Map(result.map(({ process, slot }) => [process.pid, slot])));
+    this.visibleProcessPids = chosen;
     return result;
+  }
+
+  // The branch a process is busiest on (weighted), with hysteresis so a ball does not hop
+  // branches on small fluctuations — it keeps its home unless another branch clearly wins.
+  homeBranch(process, enabledBranches) {
+    let best = enabledBranches[0];
+    let bestVal = -1;
+    for (const branch of enabledBranches) {
+      const weighted = (process[branch] ?? 0) * BRANCH_WEIGHTS[branch];
+      if (weighted > bestVal) {
+        bestVal = weighted;
+        best = branch;
+      }
+    }
+    const prev = this.processHome.get(process.pid);
+    if (prev && enabledBranches.includes(prev)) {
+      const prevWeighted = (process[prev] ?? 0) * BRANCH_WEIGHTS[prev];
+      if (prevWeighted >= bestVal * 0.77) return prev;
+    }
+    return best;
+  }
+
+  // Stable angular slot per pid within a branch so balls hold their position.
+  assignSlots(branch, pids) {
+    const prevSlots = this.branchSlots.get(branch) ?? new Map();
+    const used = new Set();
+    const slotByPid = new Map();
+    for (const pid of pids) {
+      const slot = prevSlots.get(pid);
+      if (slot !== undefined && !used.has(slot)) {
+        slotByPid.set(pid, slot);
+        used.add(slot);
+      }
+    }
+    let next = 0;
+    for (const pid of pids) {
+      if (slotByPid.has(pid)) continue;
+      while (used.has(next)) next += 1;
+      slotByPid.set(pid, next);
+      used.add(next);
+    }
+    this.branchSlots.set(branch, slotByPid);
+    return slotByPid;
   }
 
   buildDynamicItems(liveTree, config) {
     const items = [];
     const processes = Array.isArray(liveTree?.processes) ? liveTree.processes : [];
     const drives = Array.isArray(liveTree?.drives) ? liveTree.drives : [];
-    const baseCount = config.liveProcessCount > 0
-      ? config.liveProcessCount
-      : Math.round(clamp(7 + config.graphDensity * 4, 6, 14));
-    const processLimit = config.lowPerformanceMode ? Math.min(5, baseCount) : baseCount;
+    const baseCount = config.maxProcesses > 0
+      ? config.maxProcesses
+      : Math.round(clamp(14 + config.graphDensity * 8, 8, 30));
+    const maxProcesses = config.lowPerformanceMode ? Math.min(10, baseCount) : baseCount;
     const driveLimit = config.lowPerformanceMode ? 2 : 4;
+    const enabledBranches = ['cpu', 'ram', ...(config.enableProcessGpu !== false ? ['gpu'] : []), 'disk'];
 
-    // One descriptor per branch; GPU can be toggled off from Wallpaper Engine.
-    const metricBranches = [
-      { metric: 'cpu', threshold: 0.00025, baseAngle: -0.42, step: 0.055, baseRank: 90 },
-      { metric: 'ram', threshold: 0.00025, baseAngle: -0.34, step: 0.055, baseRank: 110 },
-      { metric: 'gpu', threshold: 0.001, baseAngle: -0.32, step: 0.06, baseRank: 120, enabled: config.enableProcessGpu !== false },
-      { metric: 'disk', threshold: 0.001, baseAngle: 0.04, step: 0.06, baseRank: 125 }
-    ];
+    // One node per process under its busiest branch (option B). The single ring shows the
+    // dominant metric; the label still carries the full cpu/ram/gpu/disk breakdown.
+    const selected = this.selectTopProcesses(processes, maxProcesses);
+    const homeByPid = new Map();
+    const pidsByBranch = new Map();
+    for (const process of selected) {
+      const home = this.homeBranch(process, enabledBranches);
+      homeByPid.set(process.pid, home);
+      if (!pidsByBranch.has(home)) pidsByBranch.set(home, []);
+      pidsByBranch.get(home).push(process.pid);
+    }
+    this.processHome = homeByPid;
 
-    for (const branch of metricBranches) {
-      if (branch.enabled === false) continue;
-      const selected = this.selectProcesses(processes, branch.metric, processLimit, branch.threshold);
-      for (const { process, slot } of selected) {
-        items.push({
-          id: `live:${branch.metric}:${process.pid}`,
-          parentId: branch.metric,
-          label: processLabel(process, slot, branch.metric, config),
-          category: branch.metric,
-          kind: 'process',
-          metric: branch.metric,
-          value: process[branch.metric],
-          stats: process,
-          rank: branch.baseRank + slot,
-          angleOffset: branch.baseAngle + slot * branch.step,
-          distance: 112
-        });
-      }
+    const slotMaps = new Map();
+    for (const [branch, pids] of pidsByBranch) {
+      slotMaps.set(branch, this.assignSlots(branch, pids));
+    }
+    // Drop slot state for branches that no longer host any process.
+    for (const branch of [...this.branchSlots.keys()]) {
+      if (!pidsByBranch.has(branch)) this.branchSlots.delete(branch);
+    }
+
+    for (const process of selected) {
+      const branch = homeByPid.get(process.pid);
+      const slot = slotMaps.get(branch)?.get(process.pid) ?? 0;
+      const place = BRANCH_PLACEMENT[branch] ?? { baseAngle: 0, step: 0.055 };
+      items.push({
+        id: `live:proc:${process.pid}`,
+        parentId: branch,
+        label: processLabel(process, slot, branch, config),
+        category: branch,
+        kind: 'process',
+        metric: branch,
+        value: process[branch],
+        stats: process,
+        rank: 90 + slot,
+        angleOffset: place.baseAngle + slot * place.step,
+        distance: 112
+      });
     }
 
     drives.slice(0, driveLimit).forEach((drive, index) => {
@@ -446,6 +511,16 @@ export class GraphModel {
     );
 
     if (topologySignature !== this.dynamicSignature) {
+      // Remember where existing dynamic nodes are so survivors don't snap back to their
+      // parent on every rebuild — they ease from their old spot to the new one instead.
+      const prevPositions = new Map();
+      for (const id of this.dynamicNodeIds) {
+        const node = this.nodeById.get(id);
+        if (node) {
+          prevPositions.set(id, { x: node.x, y: node.y, renderX: node.renderX, renderY: node.renderY, renderRadius: node.renderRadius });
+        }
+      }
+
       this.clearDynamicNodes();
 
       for (const item of items) {
@@ -470,6 +545,15 @@ export class GraphModel {
           x: parent.x + Math.cos(angle) * item.distance,
           y: parent.y + Math.sin(angle) * item.distance
         });
+
+        const prev = prevPositions.get(item.id);
+        if (prev) {
+          node.x = prev.x;
+          node.y = prev.y;
+          node.renderX = prev.renderX;
+          node.renderY = prev.renderY;
+          node.renderRadius = prev.renderRadius;
+        }
 
         this.dynamicNodeIds.add(node.id);
         if (!this.leavesByCategory.has(item.category)) {

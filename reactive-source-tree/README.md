@@ -49,9 +49,9 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - audio reaction
 - telemetry WebSocket
 - live process leaves
-- GPU process nodes (show/hide the GPU branch's live processes)
+- GPU process nodes (let GPU be a process's home branch)
 - show process names
-- processes per branch (4–14)
+- max processes (6–40 most active processes shown)
 - label density (how aggressively overlapping labels are hidden)
 - telemetry URL
 - debug overlay
@@ -61,20 +61,26 @@ The code also handles missing Wallpaper Engine APIs, so it runs normally in a br
 
 ## Live Tree Model
 
-The wallpaper uses one central `PC` root with subsystem branches. Without telemetry, generated leaves keep the source-tree alive. With telemetry enabled, the helper adds live leaves:
+The wallpaper uses one central `PC` root with subsystem branches. Without telemetry, generated leaves keep the source-tree alive. With telemetry enabled, the helper adds live nodes:
 
-- top CPU processes under `CPU`
-- top memory processes under `RAM`
-- top GPU processes under `GPU` (when per-process GPU is available, see below)
-- top disk processes under `DISK`
-- drives such as `C:` under `DISK`
-- drive child leaves for `used`, `free`, and `activity`
+- each process appears **once**, as a single ball under its busiest resource branch
+  (CPU / RAM / GPU / DISK). The choice is weighted so resident memory doesn't pull every
+  process onto `RAM`, and it sticks (hysteresis) so balls don't hop branches on small
+  fluctuations.
+- the ring shows the dominant metric; the label keeps the full `cpu/ram/gpu/disk`
+  breakdown, so you still see everything the process is doing.
+- drives such as `C:` appear under `DISK` with `used` / `free` / `activity` child nodes.
+
+Only the most active processes are shown — ranked by load up to **Max Processes**, with
+near-idle ones dropped, and the set only changes when rankings shift a lot, so it
+declutters when busy without flickering.
 
 Live process nodes are the meaningful "balls". They render larger and brighter than the
 synthetic structure, scale their size/glow/ring with usage, take their branch colour
 (CPU cyan, RAM violet, GPU orange, DISK gold), and carry a bright white core that grows
-with load. The synthetic system leaves (`shader`, `threads`, `queue`, …) deliberately
-recede into a dim background so they read as structure rather than competing for attention.
+with load. The hottest process on each branch gets a subtle accent ring. The synthetic
+system leaves (`shader`, `threads`, `queue`, …) deliberately recede into a dim background
+so they read as structure rather than competing for attention.
 
 Process names are shown by default (`Show Process Names`); disable it to fall back to
 generic labels like `cpu_proc_01`.

@@ -116,12 +116,12 @@
         "type": "bool",
         "value": true
       },
-      "live_process_count": {
-        "text": "Processes Per Branch",
+      "max_processes": {
+        "text": "Max Processes",
         "type": "slider",
-        "value": 8,
-        "min": 4,
-        "max": 14,
+        "value": 24,
+        "min": 6,
+        "max": 40,
         "step": 1
       },
       "label_density": {

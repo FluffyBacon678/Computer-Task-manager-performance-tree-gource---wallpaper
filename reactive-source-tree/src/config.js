@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG = {
   enableLiveProcesses: true,
   enableProcessGpu: true,
   showProcessNames: true,
-  liveProcessCount: 8,
+  maxProcesses: 24,
   labelDensity: 1,
   telemetryUrl: 'ws://127.0.0.1:17890',
   debugOverlay: false,
