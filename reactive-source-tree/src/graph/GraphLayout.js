@@ -58,9 +58,10 @@ export class GraphLayout {
     this.model = model;
     this.activityState = activityState;
     this.config = config;
-    // Mouse interaction: nodes within radius are attracted to (or repelled from) the
-    // cursor while it is moving. Updated each frame from main via setPointer().
-    this.pointer = { x: 0, y: 0, active: false, mode: 'attract', strength: 0, radius: 240 };
+    // Mouse interaction: nodes within radius are attracted to / repelled from the cursor
+    // (attract/repel modes), or pushed away from the focused node (focus mode). Updated
+    // each frame from main via setPointer().
+    this.pointer = { x: 0, y: 0, active: false, mode: 'focus', strength: 0, radius: 240, focusStrength: 0, focusRadius: 150 };
     this.createSimulation();
   }
 
@@ -78,7 +79,7 @@ export class GraphLayout {
     let nodes = [];
     function force(alpha) {
       const p = layout.pointer;
-      if (!p.active || p.mode === 'off' || p.strength <= 0) return;
+      if (!p.active || (p.mode !== 'attract' && p.mode !== 'repel') || p.strength <= 0) return;
       const radius2 = p.radius * p.radius;
       const sign = p.mode === 'repel' ? -1 : 1;
       for (const node of nodes) {
@@ -90,6 +91,38 @@ export class GraphLayout {
         const dist = Math.sqrt(dist2);
         const falloff = 1 - dist / p.radius;
         const f = (sign * p.strength * falloff * alpha) / dist;
+        node.vx += dx * f;
+        node.vy += dy * f;
+      }
+    }
+    force.initialize = (nextNodes) => {
+      nodes = nextNodes;
+    };
+    return force;
+  }
+
+  // Focus mode: push every other node away from the focused node so it can be singled out
+  // and read. The focused node is pinned (by HoverController) so it holds still.
+  makeFocusForce() {
+    const layout = this;
+    let nodes = [];
+    function force(alpha) {
+      const p = layout.pointer;
+      if (!p.active || p.mode !== 'focus' || p.focusStrength <= 0) return;
+      const focused = layout.model && layout.model.focusedId
+        ? layout.model.nodeById.get(layout.model.focusedId)
+        : null;
+      if (!focused) return;
+      const radius2 = p.focusRadius * p.focusRadius;
+      for (const node of nodes) {
+        if (node === focused || node.type === 'root') continue;
+        const dx = node.x - focused.x;
+        const dy = node.y - focused.y;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > radius2 || dist2 < 1) continue;
+        const dist = Math.sqrt(dist2);
+        const falloff = 1 - dist / p.focusRadius;
+        const f = (p.focusStrength * falloff * alpha) / dist;
         node.vx += dx * f;
         node.vy += dy * f;
       }
@@ -127,6 +160,7 @@ export class GraphLayout {
       .force('y', forceY(0).strength((node) => (node.type === 'root' ? 0.2 : 0.006)))
       .force('radialCluster', radialClusterForce(this.activityState, this.config))
       .force('pointer', this.makePointerForce())
+      .force('focus', this.makeFocusForce())
       .alphaDecay(SIMULATION.alphaDecay)
       .velocityDecay(SIMULATION.velocityDecay)
       .stop();

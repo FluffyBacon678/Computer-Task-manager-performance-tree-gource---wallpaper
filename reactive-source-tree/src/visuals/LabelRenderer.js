@@ -6,6 +6,30 @@ function captionText(node) {
   return node.captionDetail ? `${title}\n${node.captionDetail}` : title;
 }
 
+function pct(value) {
+  const p = Math.max(0, Math.min(1, value ?? 0)) * 100;
+  if (p > 0 && p < 1) return `${p.toFixed(1)}%`;
+  return `${Math.round(p)}%`;
+}
+
+// Expanded, readable card shown for the hovered/focused node.
+function detailCaption(node) {
+  if (node.liveKind === 'process' && node.liveStats) {
+    const s = node.liveStats;
+    const meta = [];
+    if (Number.isFinite(s.pid)) meta.push(`PID ${s.pid}`);
+    if (Number.isFinite(s.threads) && s.threads > 0) meta.push(`${s.threads} threads`);
+    const lines = [
+      node.label,
+      `CPU ${pct(s.cpu)}   RAM ${pct(s.ram)}`,
+      `GPU ${pct(s.gpu)}   DISK ${pct(s.disk)}`
+    ];
+    if (meta.length) lines.push(meta.join(' · '));
+    return lines.join('\n');
+  }
+  return captionText(node);
+}
+
 function shouldShowLabel(node, config) {
   if (!config.showLabels) return false;
   if (node.visibleFactor <= 0.22) return false;
@@ -106,7 +130,10 @@ export class LabelRenderer {
       const anchorY = vertical < -0.25 ? 1 : vertical > 0.25 ? 0 : 0.5;
       const activityAlpha = clamp(0.48 + node.activity * 0.46);
 
-      const nextText = captionText(node);
+      const focus = node.focus ?? 0;
+      const focused = focus > 0.4;
+
+      const nextText = focused ? detailCaption(node) : captionText(node);
       if (label.lastCaptionText !== nextText) {
         label.text = nextText;
         label.lastCaptionText = nextText;
@@ -114,16 +141,25 @@ export class LabelRenderer {
       label.x = node.renderX + horizontal * outward;
       label.y = node.renderY + vertical * outward;
       label.anchor.set(anchorX, anchorY);
+      const baseScale = node.type === 'root' ? 1.05 : node.type === 'category' ? 0.98 : node.type === 'live' ? 0.9 : 0.78;
       // Store the target alpha; the actual alpha is driven by the declutter fade below.
-      label.baseAlpha = node.type === 'leaf'
-        ? clamp(0.32 + node.activity * 0.46) * node.visibleFactor
-        : activityAlpha * node.visibleFactor;
-      label.scale.set(node.type === 'root' ? 1.05 : node.type === 'category' ? 0.98 : node.type === 'live' ? 0.9 : 0.78);
+      label.baseAlpha = focused
+        ? 1
+        : node.type === 'leaf'
+          ? clamp(0.32 + node.activity * 0.46) * node.visibleFactor
+          : activityAlpha * node.visibleFactor;
+      label.scale.set(baseScale * (1 + focus * 0.9));
+
+      if (focused) {
+        // Always show the focused card, on top of everything.
+        this.container.removeChild(label);
+        this.container.addChild(label);
+      }
 
       this.candidates.push({
         label,
-        baseVisible: node.visibleFactor > 0.25,
-        priority: labelPriority(node),
+        baseVisible: focused || node.visibleFactor > 0.25,
+        priority: focused ? 99 : labelPriority(node),
         activity: node.activity ?? 0
       });
     }

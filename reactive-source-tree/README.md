@@ -53,7 +53,7 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - show process names
 - max processes (6–40 most active processes shown)
 - label density (how aggressively overlapping labels are hidden)
-- mouse interaction (off / attract / repel) and mouse strength
+- mouse interaction (off / focus / attract / repel) and mouse strength
 - overlay HUD (clock, date, total load, colour legend)
 - scheduler actor (roaming agent that beams the hottest process)
 - telemetry URL
@@ -110,9 +110,14 @@ GPL-3.0):
   activity reads brighter — and a big spike fires a directional **beam** from its branch.
 - **Scheduler actor**: an optional roaming agent drifts with friction toward the hottest
   process and beams it, the closest analog to Gource's committer avatars.
-- **Mouse interaction**: while the cursor moves, nearby nodes are gently attracted to (or
-  repelled from) it; it relaxes when the mouse goes idle. Works in Wallpaper Engine, which
-  forwards normal pointer events.
+- **Mouse interaction** (hover only — that is all Wallpaper Engine delivers reliably, since
+  clicks and the wheel hit the desktop, not the wallpaper):
+  - **Focus** (default): point at a node and it enlarges, brightens, shows a detailed
+    readable card (name, full `CPU/RAM/GPU/DISK`, PID + threads), pins in place, and gently
+    pushes its neighbours away so you can single it out and read it.
+  - **Attract / Repel**: whole-graph modes — nearby nodes are pulled toward or pushed from
+    the cursor while it moves.
+  - All modes relax when the mouse goes idle.
 
 ## Audio
 

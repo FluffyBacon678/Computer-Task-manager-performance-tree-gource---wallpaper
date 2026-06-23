@@ -9,6 +9,7 @@ import { EdgeParticleSystem } from './particles/EdgeParticleSystem.js';
 import { GraphLayout } from './graph/GraphLayout.js';
 import { GraphModel } from './graph/GraphModel.js';
 import { GraphRenderer } from './graph/GraphRenderer.js';
+import { HoverController } from './state/HoverController.js';
 import { Palette } from './visuals/Palette.js';
 import { OverlayHud } from './visuals/OverlayHud.js';
 import { ParticleSystem } from './particles/ParticleSystem.js';
@@ -87,6 +88,7 @@ const demoSignalGenerator = new DemoSignalGenerator(activityState);
 const audioInput = new WallpaperAudioInput(activityState, config);
 const telemetryInput = new TelemetryWebSocketInput(activityState, config);
 const pointerInput = new PointerInput();
+const hoverController = new HoverController();
 
 const cursorGraphics = new Graphics();
 glowLayer.addChild(cursorGraphics);
@@ -167,6 +169,13 @@ app.ticker.add(() => {
   const pointerWorldX = (pointerInput.x - cameraController.x) / cameraScale;
   const pointerWorldY = (pointerInput.y - cameraController.y) / cameraScale;
   const pointerActive = pointerInput.influence > 0.01 && config.mouseInteraction !== 'off';
+  hoverController.update(
+    graphModel,
+    pointerWorldX,
+    pointerWorldY,
+    pointerActive && config.mouseInteraction === 'focus',
+    rawDt
+  );
   graphLayout.setPointer(
     pointerWorldX,
     pointerWorldY,
@@ -175,6 +184,8 @@ app.ticker.add(() => {
     60 * config.mouseStrength * config.intensity * pointerInput.influence,
     240
   );
+  graphLayout.pointer.focusStrength = 46 * config.mouseStrength * config.intensity * pointerInput.influence;
+  graphLayout.pointer.focusRadius = 150;
 
   graphLayout.step(config.lowPerformanceMode ? 1 : 2);
   cameraController.update(activityState, config, time, rawDt);

@@ -15,7 +15,7 @@ export const DEFAULT_CONFIG = {
   showProcessNames: true,
   maxProcesses: 24,
   labelDensity: 1,
-  mouseInteraction: 'attract',
+  mouseInteraction: 'focus',
   mouseStrength: 1,
   showHud: true,
   enableActor: true,

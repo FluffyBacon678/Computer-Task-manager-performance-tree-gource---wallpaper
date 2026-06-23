@@ -20,6 +20,7 @@ export class NodeVisual {
   draw(node, activityState, config, time) {
     const visible = node.visibleFactor ?? 1;
     const flare = node.flare ?? 0;
+    const focus = node.focus ?? 0;
 
     // Lifecycle envelope: bloom in on birth, shrink + fade on death.
     let lifeScale = 1;
@@ -47,9 +48,9 @@ export class NodeVisual {
     const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
       ? (1 - (time - node.birthTime) / 0.3) * 0.5
       : 0;
-    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22));
-    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash) * visible * lifeAlpha;
-    const glowStrengthBase = (config.lowPerformanceMode ? config.glowStrength * 0.45 : config.glowStrength) * (1 + flare * 0.8);
+    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9));
+    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4) * visible * lifeAlpha;
+    const glowStrengthBase = (config.lowPerformanceMode ? config.glowStrength * 0.45 : config.glowStrength) * (1 + flare * 0.8 + focus * 1.1);
 
     drawGlowCircle(
       this.graphics,
@@ -61,6 +62,11 @@ export class NodeVisual {
       glowStrengthBase * (node.type === 'root' ? 1.6 : boost),
       node.type === 'leaf' || config.lowPerformanceMode ? 2 : 4
     );
+
+    if (focus > 0.06) {
+      this.graphics.lineStyle(1.3, 0xffffff, 0.5 * focus);
+      this.graphics.drawCircle(node.renderX, node.renderY, radius + 6 + focus * 4);
+    }
 
     if (node.type === 'root') {
       this.graphics.lineStyle(1.4, 0xffffff, 0.58 + activity * 0.34);

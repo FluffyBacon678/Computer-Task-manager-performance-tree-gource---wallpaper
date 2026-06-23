@@ -135,11 +135,15 @@
       "mouse_interaction": {
         "text": "Mouse Interaction",
         "type": "combo",
-        "value": "attract",
+        "value": "focus",
         "options": [
           {
             "label": "Off",
             "value": "off"
+          },
+          {
+            "label": "Focus (hover to read)",
+            "value": "focus"
           },
           {
             "label": "Attract",
