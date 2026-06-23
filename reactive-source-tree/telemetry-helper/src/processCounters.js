@@ -37,12 +37,16 @@ import { spawn } from 'node:child_process';
 //   PDISK <pid>:<bytesPerSec>,...
 //   LDISK <drive>:<bytesPerSec>,...
 // NOTE: never use $pid (read-only automatic variable) — we use $procId.
-const PS_SCRIPT = `Get-Counter -Counter @(
+const PS_SCRIPT = `$parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction SilentlyContinue).ParentProcessId
+Get-Counter -Counter @(
   '\\GPU Engine(*)\\Utilization Percentage',
   '\\Process(*)\\ID Process',
   '\\Process(*)\\IO Data Bytes/sec',
   '\\LogicalDisk(*)\\Disk Bytes/sec'
 ) -Continuous -SampleInterval 2 -ErrorAction SilentlyContinue | ForEach-Object {
+  # Self-terminate if the helper that launched us is gone, so a killed helper never
+  # leaves an orphaned Get-Counter stream running in the background.
+  if ($parentPid -and -not (Get-Process -Id $parentPid -ErrorAction SilentlyContinue)) { break }
   $gpu = @{}
   $idByInstance = @{}
   $ioByInstance = @{}

@@ -261,3 +261,13 @@ async function broadcastTelemetry() {
 }
 
 setInterval(broadcastTelemetry, UPDATE_INTERVAL_MS);
+
+// Stop the performance-counter stream promptly on a graceful shutdown (Ctrl+C / SIGTERM)
+// so it does not linger after the helper exits.
+function shutdown() {
+  processCounterSampler.stop();
+  process.exit(0);
+}
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
+process.once('exit', () => processCounterSampler.stop());
