@@ -1,5 +1,5 @@
 import { drawGlowCircle } from '../visuals/GlowUtils.js';
-import { clamp, lerp, TAU } from '../utils/MathUtils.js';
+import { clamp, TAU } from '../utils/MathUtils.js';
 
 const BLOOM_DURATION = 0.55;
 const DEATH_DURATION = 0.6;
@@ -74,9 +74,20 @@ export class NodeVisual {
       this.graphics.lineStyle(0.8, 0xaeeeff, 0.24);
       this.graphics.drawCircle(node.renderX, node.renderY, radius * 2.35 + activity * 8);
     } else if (node.type === 'category') {
-      const orbit = radius * lerp(1.8, 2.5, activity);
-      this.graphics.lineStyle(0.75, node.color, 0.2 + activity * 0.18);
-      this.graphics.drawCircle(node.renderX, node.renderY, orbit);
+      // Load gauge for the branch: the ring fills with this branch's load %, matching the
+      // process-ball gauges, so it carries meaning instead of being decoration.
+      const gauge = radius * 2.1;
+      const value = clamp(node.value ?? activity);
+      this.graphics.lineStyle({ width: 1.4, color: 0x12283a, alpha: 0.55 });
+      this.graphics.drawCircle(node.renderX, node.renderY, gauge);
+      this.graphics.lineStyle({ width: 2.2, color: node.color, alpha: 0.5 + value * 0.4, cap: 'round' });
+      this.graphics.arc(
+        node.renderX,
+        node.renderY,
+        gauge,
+        -Math.PI / 2,
+        -Math.PI / 2 + TAU * value
+      );
     } else if (node.type === 'live') {
       const isProcess = node.liveKind === 'process';
       const ringRadius = radius * (isProcess ? 2.15 : 1.7);

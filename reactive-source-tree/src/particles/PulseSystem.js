@@ -28,7 +28,9 @@ export class PulseSystem {
       disk: 0,
       net: 0,
       ram: 0,
-      temperature: 0
+      temperature: 0,
+      gpu: 0,
+      audio: 0
     };
     this.heatCooldown = 0;
   }
@@ -63,6 +65,8 @@ export class PulseSystem {
     const net = Math.max(activityState.value('netDown'), activityState.value('netUp'));
     const ram = activityState.value('ram');
     const temperature = activityState.value('temperature');
+    const gpu = activityState.value('gpu');
+    const audio = activityState.value('audioVolume');
     const root = model.nodeById.get('root');
 
     if (root && bass > 0.18 && bass - this.previous.bass > 0.035) {
@@ -77,6 +81,8 @@ export class PulseSystem {
     this.spawnOnSpike(model, 'cpu', cpu, this.previous.cpu, config, 0.42);
     this.spawnOnSpike(model, 'disk', disk, this.previous.disk, config, 0.32);
     this.spawnOnSpike(model, 'network', net, this.previous.net, config, 0.36);
+    this.spawnOnSpike(model, 'gpu', gpu, this.previous.gpu, config, 0.4);
+    this.spawnOnSpike(model, 'audio', audio, this.previous.audio, config, 0.34);
 
     const ramNode = model.getCategoryNode('ram');
     if (ramNode && ram > 0.72 && Math.random() < 0.018 * config.intensity) {
@@ -98,7 +104,7 @@ export class PulseSystem {
       this.heatCooldown = 2.8;
     }
 
-    this.previous = { bass, cpu, disk, net, ram, temperature };
+    this.previous = { bass, cpu, disk, net, ram, temperature, gpu, audio };
   }
 
   spawnOnSpike(model, category, current, previous, config, threshold) {
