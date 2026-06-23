@@ -52,6 +52,18 @@ export class GraphRenderer {
       this.nodeVisual.draw(node, activityState, config, time);
     }
 
+    // Draw nodes mid fade-out, then purge ones whose death envelope has finished.
+    if (model.dyingNodes && model.dyingNodes.length) {
+      for (let i = model.dyingNodes.length - 1; i >= 0; i -= 1) {
+        const node = model.dyingNodes[i];
+        if (time - node.deathTime >= 0.65) {
+          model.dyingNodes.splice(i, 1);
+          continue;
+        }
+        this.nodeVisual.draw(node, activityState, config, time);
+      }
+    }
+
     this.labelRenderer.update(model.nodes, config, dt);
   }
 }

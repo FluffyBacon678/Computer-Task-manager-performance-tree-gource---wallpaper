@@ -1,6 +1,17 @@
 import { drawGlowCircle } from '../visuals/GlowUtils.js';
 import { clamp, lerp, TAU } from '../utils/MathUtils.js';
 
+const BLOOM_DURATION = 0.55;
+const DEATH_DURATION = 0.6;
+
+// Gentle overshoot so a node "blooms" in rather than scaling linearly.
+function easeOutBack(t) {
+  const c1 = 1.9;
+  const c3 = c1 + 1;
+  const p = t - 1;
+  return 1 + c3 * p * p * p + c1 * p * p;
+}
+
 export class NodeVisual {
   constructor(graphics) {
     this.graphics = graphics;
@@ -8,18 +19,37 @@ export class NodeVisual {
 
   draw(node, activityState, config, time) {
     const visible = node.visibleFactor ?? 1;
-    if (visible <= 0.03) return;
+    const flare = node.flare ?? 0;
+
+    // Lifecycle envelope: bloom in on birth, shrink + fade on death.
+    let lifeScale = 1;
+    let lifeAlpha = 1;
+    if (node.birthTime != null) {
+      const age = time - node.birthTime;
+      if (age < BLOOM_DURATION) {
+        const t = clamp(age / BLOOM_DURATION);
+        lifeScale = easeOutBack(t);
+        lifeAlpha = clamp(t * 1.5);
+      }
+    }
+    if (node.dying) {
+      const d = clamp((time - node.deathTime) / DEATH_DURATION);
+      lifeScale *= 1 - d;
+      lifeAlpha *= 1 - d;
+    }
+    if (visible * lifeAlpha <= 0.03) return;
 
     const activity = node.activity ?? 0;
-    // glowBoost (set per-node in GraphModel) lets live process nodes read brighter
-    // than the structural synthetic leaves, which are pushed into the background.
     const boost = node.glowBoost ?? 1;
     const pulse = node.type === 'root'
       ? activityState.value('audioBass') * Math.sin(time * 9) * 1.8
       : Math.sin(time * 2.4 + node.phase) * activity * 0.75;
-    const radius = Math.max(0.5, node.renderRadius + pulse);
-    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost) * visible;
-    const glowStrengthBase = config.lowPerformanceMode ? config.glowStrength * 0.45 : config.glowStrength;
+    const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
+      ? (1 - (time - node.birthTime) / 0.3) * 0.5
+      : 0;
+    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22));
+    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash) * visible * lifeAlpha;
+    const glowStrengthBase = (config.lowPerformanceMode ? config.glowStrength * 0.45 : config.glowStrength) * (1 + flare * 0.8);
 
     drawGlowCircle(
       this.graphics,
@@ -45,23 +75,20 @@ export class NodeVisual {
       const isProcess = node.liveKind === 'process';
       const ringRadius = radius * (isProcess ? 2.15 : 1.7);
       const progress = clamp(node.visualValue ?? node.value ?? 0);
-      // heat = raw resource share (0..1); drives ring thickness and core brightness so
-      // a heavier process is unmistakably "louder" than a light one.
       const heat = clamp(node.heat ?? node.value ?? 0);
+      const ringAlpha = lifeAlpha;
 
-      // Faint background track so the empty part of the ring still reads as a gauge.
       this.graphics.lineStyle({
         width: isProcess ? 2.4 : 1.6,
         color: 0x0c1b29,
-        alpha: 0.6
+        alpha: 0.6 * ringAlpha
       });
       this.graphics.drawCircle(node.renderX, node.renderY, ringRadius);
 
-      // Coloured usage arc in the node's branch colour.
       this.graphics.lineStyle({
         width: isProcess ? 3 + heat * 1.8 : 2,
         color: node.color,
-        alpha: 0.6 + progress * 0.36,
+        alpha: (0.6 + progress * 0.36) * ringAlpha,
         cap: 'round'
       });
       this.graphics.arc(
@@ -73,19 +100,16 @@ export class NodeVisual {
       );
 
       if (isProcess) {
-        // White core tied to usage: faint and small when idle, blazing and broad when
-        // busy. On the ADD-blended node layer this makes hot processes pop forward.
-        this.graphics.beginFill(0xffffff, Math.min(0.85, 0.05 + heat * 0.7) * visible);
+        this.graphics.beginFill(0xffffff, Math.min(0.9, 0.05 + heat * 0.7 + flare * 0.4) * visible * lifeAlpha);
         this.graphics.drawCircle(node.renderX, node.renderY, Math.max(0.6, radius * (0.3 + heat * 0.28)));
         this.graphics.endFill();
 
         if (!config.lowPerformanceMode) {
-          this.graphics.lineStyle(0.8, 0xffffff, 0.16 + progress * 0.28);
+          this.graphics.lineStyle(0.8, 0xffffff, (0.16 + progress * 0.28) * ringAlpha);
           this.graphics.drawCircle(node.renderX, node.renderY, ringRadius + 4);
 
           if (node.isBranchLeader) {
-            // Accent the hottest process in each branch (the "top offender").
-            this.graphics.lineStyle(1.2, node.color, 0.5 + progress * 0.34);
+            this.graphics.lineStyle(1.2, node.color, (0.5 + progress * 0.34) * ringAlpha);
             this.graphics.drawCircle(node.renderX, node.renderY, ringRadius + 7.5);
           }
         }

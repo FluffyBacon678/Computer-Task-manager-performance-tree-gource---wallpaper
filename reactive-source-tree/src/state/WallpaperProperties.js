@@ -64,6 +64,13 @@ export class WallpaperProperties {
       clamp(Number(propertyValue(properties.max_processes, c.maxProcesses)), 6, 40)
     );
     c.labelDensity = clamp(Number(propertyValue(properties.label_density, c.labelDensity)), 0.3, 1.5);
+    c.mouseStrength = clamp(Number(propertyValue(properties.mouse_strength, c.mouseStrength)), 0, 3);
+
+    const mouseMode = propertyValue(properties.mouse_interaction, c.mouseInteraction);
+    if (typeof mouseMode === 'string') c.mouseInteraction = mouseMode;
+
+    c.showHud = toBool(propertyValue(properties.show_hud, c.showHud), c.showHud);
+    c.enableActor = toBool(propertyValue(properties.enable_actor, c.enableActor), c.enableActor);
     c.debugOverlay = toBool(propertyValue(properties.debug_overlay, c.debugOverlay), c.debugOverlay);
     c.lowPerformanceMode = toBool(
       propertyValue(properties.low_performance_mode, c.lowPerformanceMode),

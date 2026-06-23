@@ -1,6 +1,8 @@
-import { Application, BLEND_MODES, Container } from 'pixi.js';
+import { Application, BLEND_MODES, Container, Graphics } from 'pixi.js';
 import { ActivityState } from './state/ActivityState.js';
+import { ActorSystem } from './particles/ActorSystem.js';
 import { BackgroundRenderer } from './visuals/BackgroundRenderer.js';
+import { BeamSystem } from './particles/BeamSystem.js';
 import { CameraController } from './visuals/CameraController.js';
 import { DemoSignalGenerator } from './state/DemoSignalGenerator.js';
 import { EdgeParticleSystem } from './particles/EdgeParticleSystem.js';
@@ -8,8 +10,10 @@ import { GraphLayout } from './graph/GraphLayout.js';
 import { GraphModel } from './graph/GraphModel.js';
 import { GraphRenderer } from './graph/GraphRenderer.js';
 import { Palette } from './visuals/Palette.js';
+import { OverlayHud } from './visuals/OverlayHud.js';
 import { ParticleSystem } from './particles/ParticleSystem.js';
 import { PerformanceMonitor } from './utils/PerformanceMonitor.js';
+import { PointerInput } from './state/PointerInput.js';
 import { PulseSystem } from './particles/PulseSystem.js';
 import { ResizeHandler } from './utils/ResizeHandler.js';
 import { SparkleSystem } from './particles/SparkleSystem.js';
@@ -75,10 +79,17 @@ const graphRenderer = new GraphRenderer(layers, palette);
 const particleSystem = new ParticleSystem(particleLayer, palette);
 const edgeParticleSystem = new EdgeParticleSystem(particleLayer, palette);
 const pulseSystem = new PulseSystem(pulseLayer, palette);
+const beamSystem = new BeamSystem(pulseLayer, palette);
+const actorSystem = new ActorSystem(nodeLayer, palette);
 const sparkleSystem = new SparkleSystem(particleLayer, palette);
+const overlayHud = new OverlayHud(palette);
 const demoSignalGenerator = new DemoSignalGenerator(activityState);
 const audioInput = new WallpaperAudioInput(activityState, config);
 const telemetryInput = new TelemetryWebSocketInput(activityState, config);
+const pointerInput = new PointerInput();
+
+const cursorGraphics = new Graphics();
+glowLayer.addChild(cursorGraphics);
 
 new ResizeHandler(app, (width, height) => {
   backgroundRenderer.resize(width, height);
@@ -97,7 +108,10 @@ function handleConfigChange(nextConfig) {
   particleSystem?.setPalette(palette);
   edgeParticleSystem?.setPalette(palette);
   pulseSystem?.setPalette(palette);
+  beamSystem?.setPalette(palette);
+  actorSystem?.setPalette(palette);
   sparkleSystem?.setPalette(palette);
+  overlayHud?.setPalette(palette);
 
   if (graphModel?.maybeRebuild(nextConfig, palette)) {
     graphLayout.reset(graphModel, activityState, nextConfig);
@@ -128,6 +142,7 @@ app.ticker.add(() => {
   const rawDt = Math.min(app.ticker.deltaMS / 1000, 0.05);
   const dt = rawDt * config.animationSpeed;
   time += dt;
+  graphModel.now = time;
 
   telemetryInput.update();
   telemetrySyncAccumulator += rawDt;
@@ -145,7 +160,22 @@ app.ticker.add(() => {
   });
 
   activityState.update(rawDt, config.animationSpeed);
-  graphModel.updateActivities(activityState, palette);
+  graphModel.updateActivities(activityState, palette, rawDt);
+
+  pointerInput.update(rawDt);
+  const cameraScale = cameraController.scale || 1;
+  const pointerWorldX = (pointerInput.x - cameraController.x) / cameraScale;
+  const pointerWorldY = (pointerInput.y - cameraController.y) / cameraScale;
+  const pointerActive = pointerInput.influence > 0.01 && config.mouseInteraction !== 'off';
+  graphLayout.setPointer(
+    pointerWorldX,
+    pointerWorldY,
+    pointerActive,
+    config.mouseInteraction,
+    60 * config.mouseStrength * config.intensity * pointerInput.influence,
+    240
+  );
+
   graphLayout.step(config.lowPerformanceMode ? 1 : 2);
   cameraController.update(activityState, config, time, rawDt);
 
@@ -153,13 +183,28 @@ app.ticker.add(() => {
   edgeParticleSystem.update(graphModel, activityState, config, dt);
   particleSystem.update(graphModel, activityState, config, dt);
   pulseSystem.update(graphModel, activityState, config, dt);
+  actorSystem.update(graphModel, beamSystem, config, dt);
+  beamSystem.update(graphModel, config, dt);
   sparkleSystem.update(graphModel, activityState, config, dt);
 
   graphRenderer.render(graphModel, activityState, config, time, rawDt);
   edgeParticleSystem.render(time, config);
   particleSystem.render(config);
   pulseSystem.render(config);
+  beamSystem.render(config);
+  actorSystem.render(config);
   sparkleSystem.render(config);
+  overlayHud.update(activityState, config, rawDt);
+
+  cursorGraphics.clear();
+  if (pointerActive) {
+    const cursorColor = config.mouseInteraction === 'repel' ? palette.colors.audio : palette.colors.coreAccent;
+    const cursorAlpha = pointerInput.influence;
+    cursorGraphics.lineStyle(1.4, cursorColor, 0.42 * cursorAlpha);
+    cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 15 + Math.sin(time * 4) * 3);
+    cursorGraphics.lineStyle(0.7, cursorColor, 0.18 * cursorAlpha);
+    cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 28);
+  }
 
   performanceMonitor.update(rawDt);
   performanceMonitor.setStats({
@@ -167,6 +212,7 @@ app.ticker.add(() => {
       edgeParticleSystem.activeCount() +
       particleSystem.activeCount() +
       pulseSystem.activeCount() +
+      beamSystem.activeCount() +
       sparkleSystem.activeCount(),
     nodeCount: graphModel.nodes.length,
     telemetryStatus: telemetryInput.status

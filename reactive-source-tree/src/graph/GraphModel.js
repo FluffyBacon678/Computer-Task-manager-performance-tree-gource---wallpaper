@@ -160,6 +160,10 @@ export class GraphModel {
     this.branchSlots = new Map();        // branch -> Map<pid, slotIndex>
     this.processHome = new Map();        // pid -> current home branch (hysteresis)
     this.visibleProcessPids = new Set(); // membership hysteresis for the global top-N
+    // Gource-style lifecycle: nodes bloom in, fade out, and fire beams on events.
+    this.dyingNodes = [];                // nodes mid fade-out (rendered, not simulated)
+    this.beamEvents = [];                // queued {sourceId, targetId, color} for BeamSystem
+    this.now = 0;                        // current scene time, set each frame
     this.build(config, palette);
   }
 
@@ -176,6 +180,8 @@ export class GraphModel {
     this.branchSlots.clear();
     this.processHome.clear();
     this.visibleProcessPids.clear();
+    this.dyingNodes = [];
+    this.beamEvents = [];
     this.lastDensity = config.graphDensity;
 
     const root = this.addNode({
@@ -511,15 +517,15 @@ export class GraphModel {
     );
 
     if (topologySignature !== this.dynamicSignature) {
-      // Remember where existing dynamic nodes are so survivors don't snap back to their
-      // parent on every rebuild — they ease from their old spot to the new one instead.
-      const prevPositions = new Map();
+      // Keep the previous dynamic node objects so survivors don't snap back to their
+      // parent (they ease from their old spot) and removed ones can fade out (Gource
+      // file lifecycle) instead of popping.
+      const prevNodes = new Map();
       for (const id of this.dynamicNodeIds) {
         const node = this.nodeById.get(id);
-        if (node) {
-          prevPositions.set(id, { x: node.x, y: node.y, renderX: node.renderX, renderY: node.renderY, renderRadius: node.renderRadius });
-        }
+        if (node) prevNodes.set(id, node);
       }
+      const newIds = new Set(items.map((item) => item.id));
 
       this.clearDynamicNodes();
 
@@ -546,13 +552,23 @@ export class GraphModel {
           y: parent.y + Math.sin(angle) * item.distance
         });
 
-        const prev = prevPositions.get(item.id);
-        if (prev) {
-          node.x = prev.x;
-          node.y = prev.y;
-          node.renderX = prev.renderX;
-          node.renderY = prev.renderY;
-          node.renderRadius = prev.renderRadius;
+        const old = prevNodes.get(item.id);
+        if (old) {
+          // Survivor: carry position + lifecycle so it neither re-blooms nor jumps.
+          node.x = old.x;
+          node.y = old.y;
+          node.renderX = old.renderX;
+          node.renderY = old.renderY;
+          node.renderRadius = old.renderRadius;
+          node.birthTime = old.birthTime;
+          node.flare = old.flare ?? 0;
+          node.lastValue = old.lastValue;
+        } else {
+          // New process/drive: bloom in and fire a beam from its branch.
+          node.birthTime = this.now;
+          if (item.kind === 'process' && this.beamEvents.length < 24) {
+            this.beamEvents.push({ sourceId: item.parentId, targetId: item.id, color: node.color });
+          }
         }
 
         this.dynamicNodeIds.add(node.id);
@@ -561,6 +577,15 @@ export class GraphModel {
         }
         this.leavesByCategory.get(item.category).push(node);
         this.addLink(parent, node, item.category, item.kind === 'driveMetric' ? 0.42 : 0.62, item.distance, false, true);
+      }
+
+      // Nodes that disappeared this rebuild fade out rather than vanishing.
+      for (const [id, old] of prevNodes) {
+        if (!newIds.has(id)) {
+          old.dying = true;
+          old.deathTime = this.now;
+          this.dyingNodes.push(old);
+        }
       }
 
       this.dynamicSignature = topologySignature;
@@ -589,10 +614,11 @@ export class GraphModel {
     return false;
   }
 
-  updateActivities(activityState, palette) {
+  updateActivities(activityState, palette, dt = 0.016) {
     const overall = activityState.value('overallLoad');
     const bass = activityState.value('audioBass');
     const ram = activityState.value('ram');
+    const flareDecay = Math.exp(-dt / 0.8);
 
     for (const node of this.nodes) {
       if (node.type === 'root') {
@@ -629,6 +655,19 @@ export class GraphModel {
         node.value = value;
         node.visualValue = visualValue;
         node.heat = value;
+
+        // Flare on activity (Gource "light up when touched"): a jump in usage brightens
+        // the node, then decays; a big spike also fires a beam from its branch.
+        const rise = value - (node.lastValue ?? value);
+        if (rise > 0.03) {
+          node.flare = clamp((node.flare ?? 0) + rise * 3);
+          if (isProcess && rise > 0.09 && this.beamEvents.length < 24) {
+            const branch = this.categoryNodes.get(node.category);
+            if (branch) this.beamEvents.push({ sourceId: branch.id, targetId: node.id, color: node.color });
+          }
+        }
+        node.flare = (node.flare ?? 0) * flareDecay;
+        node.lastValue = value;
         node.color = palette.category(node.category, node.activity);
         // Live process/drive nodes are the meaningful "balls": keep them readable even
         // when idle and let them brighten well past the structural leaves.

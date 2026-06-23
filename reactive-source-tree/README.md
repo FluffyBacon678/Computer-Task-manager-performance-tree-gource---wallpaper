@@ -53,6 +53,9 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - show process names
 - max processes (6–40 most active processes shown)
 - label density (how aggressively overlapping labels are hidden)
+- mouse interaction (off / attract / repel) and mouse strength
+- overlay HUD (clock, date, total load, colour legend)
+- scheduler actor (roaming agent that beams the hottest process)
 - telemetry URL
 - debug overlay
 - low performance mode
@@ -95,6 +98,21 @@ first, then live processes, then drives, then synthetic leaves) and the loser is
 By default, synthetic system leaves are unlabeled decoration. Real process leaves from the
 telemetry helper are labeled and use a circular progress ring to show the resource share
 visually. Enable `System Leaf Labels` if you also want the generated subsystem leaves labeled.
+
+## Gource-inspired motion
+
+The wallpaper borrows Gource's *look and feel* — it shares no code with Gource (which is
+GPL-3.0):
+
+- **Lifecycle**: live process nodes bloom in with a flash when they appear and shrink/fade
+  out when they leave, instead of popping.
+- **Flare**: a node lights up when its usage jumps, then decays as it goes idle, so recent
+  activity reads brighter — and a big spike fires a directional **beam** from its branch.
+- **Scheduler actor**: an optional roaming agent drifts with friction toward the hottest
+  process and beams it, the closest analog to Gource's committer avatars.
+- **Mouse interaction**: while the cursor moves, nearby nodes are gently attracted to (or
+  repelled from) it; it relaxes when the mouse goes idle. Works in Wallpaper Engine, which
+  forwards normal pointer events.
 
 ## Audio
 
@@ -155,7 +173,6 @@ The helper only binds to localhost and only broadcasts local machine stats to th
 
 - GitHub repository visualization mode.
 - Media album-art palette mode.
-- Interactive mouse attraction.
 - Steam Workshop settings presets.
 - Multiple visual themes.
 - Gource custom-log import mode.

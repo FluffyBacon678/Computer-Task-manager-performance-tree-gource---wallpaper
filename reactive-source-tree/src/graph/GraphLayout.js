@@ -58,7 +58,46 @@ export class GraphLayout {
     this.model = model;
     this.activityState = activityState;
     this.config = config;
+    // Mouse interaction: nodes within radius are attracted to (or repelled from) the
+    // cursor while it is moving. Updated each frame from main via setPointer().
+    this.pointer = { x: 0, y: 0, active: false, mode: 'attract', strength: 0, radius: 240 };
     this.createSimulation();
+  }
+
+  setPointer(x, y, active, mode, strength, radius) {
+    this.pointer.x = x;
+    this.pointer.y = y;
+    this.pointer.active = active;
+    this.pointer.mode = mode;
+    this.pointer.strength = strength;
+    this.pointer.radius = radius;
+  }
+
+  makePointerForce() {
+    const layout = this;
+    let nodes = [];
+    function force(alpha) {
+      const p = layout.pointer;
+      if (!p.active || p.mode === 'off' || p.strength <= 0) return;
+      const radius2 = p.radius * p.radius;
+      const sign = p.mode === 'repel' ? -1 : 1;
+      for (const node of nodes) {
+        if (node.type === 'root') continue;
+        const dx = p.x - node.x;
+        const dy = p.y - node.y;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 > radius2 || dist2 < 1) continue;
+        const dist = Math.sqrt(dist2);
+        const falloff = 1 - dist / p.radius;
+        const f = (sign * p.strength * falloff * alpha) / dist;
+        node.vx += dx * f;
+        node.vy += dy * f;
+      }
+    }
+    force.initialize = (nextNodes) => {
+      nodes = nextNodes;
+    };
+    return force;
   }
 
   createSimulation() {
@@ -87,6 +126,7 @@ export class GraphLayout {
       .force('x', forceX(0).strength((node) => (node.type === 'root' ? 0.2 : 0.006)))
       .force('y', forceY(0).strength((node) => (node.type === 'root' ? 0.2 : 0.006)))
       .force('radialCluster', radialClusterForce(this.activityState, this.config))
+      .force('pointer', this.makePointerForce())
       .alphaDecay(SIMULATION.alphaDecay)
       .velocityDecay(SIMULATION.velocityDecay)
       .stop();
@@ -131,7 +171,8 @@ export class GraphLayout {
   step(iterations = 1) {
     this.updateForces();
     const activity = this.activityState.value('overallLoad');
-    this.simulation.alphaTarget(lerp(0.04, 0.13, activity));
+    const pointerBoost = this.pointer.active && this.pointer.mode !== 'off' ? 0.12 : 0;
+    this.simulation.alphaTarget(lerp(0.04, 0.13, activity) + pointerBoost);
     this.simulation.tick(iterations);
   }
 }
