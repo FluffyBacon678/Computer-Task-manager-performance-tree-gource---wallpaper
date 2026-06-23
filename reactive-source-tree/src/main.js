@@ -134,7 +134,7 @@ app.ticker.add(() => {
   if (telemetrySyncAccumulator >= (config.lowPerformanceMode ? 1.4 : 0.9)) {
     telemetrySyncAccumulator = 0;
     if (graphModel.syncTelemetry(telemetryInput.liveTree, config, palette)) {
-      graphLayout.reset(graphModel, activityState, config);
+      graphLayout.syncTopology(graphModel);
     }
   }
 

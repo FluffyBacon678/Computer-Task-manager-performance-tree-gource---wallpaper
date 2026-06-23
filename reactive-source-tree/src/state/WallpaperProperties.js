@@ -52,10 +52,18 @@ export class WallpaperProperties {
       propertyValue(properties.enable_live_processes, c.enableLiveProcesses),
       c.enableLiveProcesses
     );
+    c.enableProcessGpu = toBool(
+      propertyValue(properties.enable_process_gpu, c.enableProcessGpu),
+      c.enableProcessGpu
+    );
     c.showProcessNames = toBool(
       propertyValue(properties.show_process_names, c.showProcessNames),
       c.showProcessNames
     );
+    c.liveProcessCount = Math.round(
+      clamp(Number(propertyValue(properties.live_process_count, c.liveProcessCount)), 4, 14)
+    );
+    c.labelDensity = clamp(Number(propertyValue(properties.label_density, c.labelDensity)), 0.3, 1.5);
     c.debugOverlay = toBool(propertyValue(properties.debug_overlay, c.debugOverlay), c.debugOverlay);
     c.lowPerformanceMode = toBool(
       propertyValue(properties.low_performance_mode, c.lowPerformanceMode),

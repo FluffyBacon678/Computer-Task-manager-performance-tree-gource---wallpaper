@@ -49,7 +49,10 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - audio reaction
 - telemetry WebSocket
 - live process leaves
+- GPU process nodes (show/hide the GPU branch's live processes)
 - show process names
+- processes per branch (4–14)
+- label density (how aggressively overlapping labels are hidden)
 - telemetry URL
 - debug overlay
 - low performance mode
@@ -108,15 +111,22 @@ The helper only binds to localhost and only broadcasts local machine stats to th
 ### Per-process metrics
 
 - **CPU** and **RAM** per process come from the `systeminformation` package and are reliable.
-- **GPU** per process is read on Windows from the same performance counters Task Manager
-  uses (`\GPU Engine(*)\Utilization Percentage`), via `Get-Counter`. This needs no admin
-  rights and no network access. It is best-effort: the counter name can differ on localized
-  Windows installs, so if the query fails the helper silently falls back to CPU/RAM only and
-  disables further attempts. Set `RST_PER_PROCESS_GPU=0` to turn it off explicitly.
-- **Disk** per process is intentionally not collected. Windows only exposes
-  `\Process(name)\IO Data Bytes/sec`, which is keyed by process name (not PID), mixes file +
-  network + device I/O, and has no stable normalization, so it cannot be mapped to processes
-  reliably. Global disk activity is still shown on the `DISK` branch and drive nodes.
+- **GPU**, **disk I/O** (per process), and **per-drive I/O** are read on Windows from the
+  same performance counters Task Manager uses, via a single long-lived `Get-Counter
+  -Continuous` process (`telemetry-helper/src/processCounters.js`). This needs no admin
+  rights and no network access:
+  - GPU per process: `\GPU Engine(*)\Utilization Percentage` (max engine per PID).
+  - Disk per process: `\Process(*)\IO Data Bytes/sec` paired with `\Process(*)\ID Process`
+    to recover the PID. This is *IO Data* (file + network + device), mapped to an
+    approximate 0..1 share with a fixed throughput ceiling — treat it as an I/O indicator,
+    not a precise disk figure.
+  - Per-drive activity: `\LogicalDisk(*)\Disk Bytes/sec`, so each drive pulses with its own
+    real throughput instead of a shared global value.
+- It is best-effort and self-protecting: invalid counter samples are skipped, and if the
+  counters are unavailable (e.g. localized Windows where the English counter names differ)
+  the stream produces no data, the sampler retries, and after a few failures disables
+  itself and falls back to CPU/RAM only. Set `RST_PER_PROCESS_GPU=0` to turn it off
+  explicitly. The stream is also stopped automatically when no wallpaper is connected.
 
 ## Performance Tips
 
@@ -128,8 +138,9 @@ The helper only binds to localhost and only broadcasts local machine stats to th
 ## Known Limitations
 
 - Global GPU utilization and temperature depend on driver support exposed to Node.js.
-- Per-process GPU is best-effort on Windows only and may be unavailable on localized
-  installs; per-process disk is not collected (see Per-process metrics above).
+- Per-process GPU/disk and per-drive I/O are best-effort on Windows only (performance
+  counters) and may be unavailable on localized installs; per-process disk in particular is
+  an approximate IO-Data indicator, not a precise disk figure (see Per-process metrics above).
 - Wallpaper Engine property schemas sometimes need small manual tweaks between versions.
 - Without the telemetry helper the graph is a generated PC/system hierarchy; with it
   running, live Task Manager processes become the primary nodes.

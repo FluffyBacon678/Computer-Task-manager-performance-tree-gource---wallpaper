@@ -1,6 +1,6 @@
 import si from 'systeminformation';
 import { WebSocketServer } from 'ws';
-import { GpuProcessSampler } from './gpuProcessUsage.js';
+import { ProcessCounterSampler } from './processCounters.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 17890);
@@ -8,10 +8,13 @@ const UPDATE_INTERVAL_MS = 200;
 const RICH_TELEMETRY_INTERVAL_MS = 1000;
 const MAX_PROCESSES = 24;
 const MAX_DRIVES = 8;
+// Throughput ceilings used to map raw bytes/sec counter readings to a 0..1 share.
+const PROCESS_DISK_CEILING = 80 * 1024 * 1024; // 80 MB/s ~ a busy single process
+const DRIVE_DISK_CEILING = 150 * 1024 * 1024; // 150 MB/s ~ a busy volume
 
-// Optional, best-effort per-process GPU usage from Windows performance counters.
-// Falls back silently to CPU/RAM-only on any failure or non-Windows host.
-const gpuProcessSampler = new GpuProcessSampler();
+// Optional, best-effort per-process GPU/disk and per-drive I/O from Windows performance
+// counters. Falls back silently to CPU/RAM-only on any failure or non-Windows host.
+const processCounterSampler = new ProcessCounterSampler();
 
 let richTelemetryCache = {
   processes: [],
@@ -53,12 +56,13 @@ function normalizePercent(value) {
   return clamp(value / 100) ?? 0;
 }
 
-function normalizeProcess(process, gpuByPid) {
+function normalizeProcess(process, gpuByPid, diskByPid) {
   const cpu = normalizePercent(process.cpu ?? process.pcpu);
   const ram = normalizePercent(process.mem ?? process.pmem);
+  const pid = Number.isFinite(process.pid) ? process.pid : undefined;
   // Prefer the Windows performance-counter reading (keyed by PID) when available,
   // otherwise fall back to whatever GPU field systeminformation might expose (usually none).
-  const counterGpu = Number.isFinite(process.pid) ? gpuByPid?.get(process.pid) : undefined;
+  const counterGpu = pid !== undefined ? gpuByPid?.get(pid) : undefined;
   const gpu = counterGpu !== undefined
     ? normalizePercent(counterGpu)
     : normalizePercent(
@@ -67,7 +71,11 @@ function normalizeProcess(process, gpuByPid) {
       process.utilizationGpu ??
       process.gpuUtilization
     );
-  const disk = normalizePercent(process.disk ?? process.diskUsage ?? process.io ?? process.ioUsage);
+  // Per-process disk is the IO Data Bytes/sec counter (file+net+device) mapped to a share.
+  const counterDisk = pid !== undefined ? diskByPid?.get(pid) : undefined;
+  const disk = counterDisk !== undefined
+    ? normalizeBytesPerSecond(counterDisk, PROCESS_DISK_CEILING)
+    : normalizePercent(process.disk ?? process.diskUsage ?? process.io ?? process.ioUsage);
   const threads = Number.isFinite(process.threads)
     ? process.threads
     : Number.isFinite(process.threadCount)
@@ -86,16 +94,23 @@ function normalizeProcess(process, gpuByPid) {
   };
 }
 
-function normalizeDrive(drive, globalActivity) {
+function normalizeDrive(drive, globalActivity, ldiskByName) {
   const name = sanitizeName(drive.mount ?? drive.fs ?? drive.name, 'drive');
   const used = typeof drive.use === 'number'
     ? normalizePercent(drive.use)
     : clamp((drive.used ?? 0) / (drive.size || 1)) ?? 0;
 
+  // Use real per-volume Disk Bytes/sec when the counter has this drive letter,
+  // otherwise fall back to the shared global disk activity.
+  const driveBytes = ldiskByName?.get(name.toLowerCase());
+  const activity = driveBytes !== undefined
+    ? normalizeBytesPerSecond(driveBytes, DRIVE_DISK_CEILING)
+    : globalActivity;
+
   return {
     name,
     used,
-    activity: globalActivity,
+    activity,
     sizeBytes: Number.isFinite(drive.size) ? drive.size : null,
     usedBytes: Number.isFinite(drive.used) ? drive.used : null
   };
@@ -107,11 +122,11 @@ async function collectRichTelemetry(globalDiskActivity) {
     si.fsSize()
   ]);
 
-  const gpuByPid = gpuProcessSampler.sample();
+  const { gpuByPid, diskByPid, ldiskByName } = processCounterSampler.sample();
 
   const normalizedProcesses = processes.status === 'fulfilled' && Array.isArray(processes.value.list)
     ? processes.value.list
-      .map((process) => normalizeProcess(process, gpuByPid))
+      .map((process) => normalizeProcess(process, gpuByPid, diskByPid))
       .filter((process) => process.pid > 0 && process.score > 0.002)
       .sort((a, b) => b.score - a.score)
       .slice(0, MAX_PROCESSES)
@@ -119,7 +134,7 @@ async function collectRichTelemetry(globalDiskActivity) {
 
   const normalizedDrives = drives.status === 'fulfilled' && Array.isArray(drives.value)
     ? drives.value
-      .map((drive) => normalizeDrive(drive, globalDiskActivity))
+      .map((drive) => normalizeDrive(drive, globalDiskActivity, ldiskByName))
       .filter((drive) => drive.name && drive.used !== null)
       .sort((a, b) => b.used - a.used)
       .slice(0, MAX_DRIVES)

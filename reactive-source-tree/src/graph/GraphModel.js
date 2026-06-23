@@ -35,13 +35,6 @@ function safeId(value) {
     .slice(0, 40) || 'item';
 }
 
-function topByMetric(items, metric, limit, threshold = 0.00025) {
-  return [...items]
-    .filter((item) => item && item[metric] > threshold)
-    .sort((a, b) => b[metric] - a[metric])
-    .slice(0, limit);
-}
-
 function formatPercent(value) {
   const percent = clamp(value) * 100;
   if (percent > 0 && percent < 1) return `${percent.toFixed(1)}%`;
@@ -146,6 +139,9 @@ export class GraphModel {
     this.dynamicNodeIds = new Set();
     this.dynamicSignature = '';
     this.lastDensity = 0;
+    // Stable angular slot per process (metricKey -> Map<pid, slotIndex>) so a process
+    // keeps its position between frames instead of jumping as rankings shift.
+    this.processSlotState = new Map();
     this.build(config, palette);
   }
 
@@ -159,6 +155,7 @@ export class GraphModel {
     this.leavesByCategory.clear();
     this.dynamicNodeIds.clear();
     this.dynamicSignature = '';
+    this.processSlotState.clear();
     this.lastDensity = config.graphDensity;
 
     const root = this.addNode({
@@ -313,78 +310,88 @@ export class GraphModel {
     return true;
   }
 
+  // Pick which processes to show for a branch with hysteresis + stable angular slots.
+  // A process keeps its slot frame-to-frame, and only leaves once it drops out of a
+  // grace band below the cut-off, so the live nodes stop flickering in and out.
+  selectProcesses(processes, metric, limit, threshold) {
+    const sorted = processes
+      .filter((process) => process && process[metric] > threshold)
+      .sort((a, b) => b[metric] - a[metric]);
+
+    const rankByPid = new Map();
+    sorted.forEach((process, rank) => rankByPid.set(process.pid, rank));
+
+    const slotMap = this.processSlotState.get(metric) ?? new Map();
+    const keepBand = limit + 4; // a member survives until it falls below this rank
+
+    const retained = [];
+    const usedSlots = new Set();
+    const retainedPids = new Set();
+    for (const [pid, slot] of slotMap) {
+      const rank = rankByPid.get(pid);
+      if (rank !== undefined && rank < keepBand && slot < limit) {
+        retained.push({ process: sorted[rank], slot });
+        usedSlots.add(slot);
+        retainedPids.add(pid);
+      }
+    }
+
+    const freeSlots = [];
+    for (let slot = 0; slot < limit; slot += 1) {
+      if (!usedSlots.has(slot)) freeSlots.push(slot);
+    }
+
+    const added = [];
+    let next = 0;
+    for (const process of sorted) {
+      if (next >= freeSlots.length) break;
+      if (retainedPids.has(process.pid)) continue;
+      added.push({ process, slot: freeSlots[next] });
+      next += 1;
+    }
+
+    const result = [...retained, ...added];
+    this.processSlotState.set(metric, new Map(result.map(({ process, slot }) => [process.pid, slot])));
+    return result;
+  }
+
   buildDynamicItems(liveTree, config) {
     const items = [];
     const processes = Array.isArray(liveTree?.processes) ? liveTree.processes : [];
     const drives = Array.isArray(liveTree?.drives) ? liveTree.drives : [];
-    const processLimit = config.lowPerformanceMode
-      ? 5
+    const baseCount = config.liveProcessCount > 0
+      ? config.liveProcessCount
       : Math.round(clamp(7 + config.graphDensity * 4, 6, 14));
+    const processLimit = config.lowPerformanceMode ? Math.min(5, baseCount) : baseCount;
     const driveLimit = config.lowPerformanceMode ? 2 : 4;
 
-    topByMetric(processes, 'cpu', processLimit).forEach((process, index) => {
-      items.push({
-        id: `live:cpu:${process.pid}`,
-        parentId: 'cpu',
-        label: processLabel(process, index, 'cpu', config),
-        category: 'cpu',
-        kind: 'process',
-        metric: 'cpu',
-        value: process.cpu,
-        stats: process,
-        rank: 90 + index,
-        angleOffset: -0.42 + index * 0.055,
-        distance: 112
-      });
-    });
+    // One descriptor per branch; GPU can be toggled off from Wallpaper Engine.
+    const metricBranches = [
+      { metric: 'cpu', threshold: 0.00025, baseAngle: -0.42, step: 0.055, baseRank: 90 },
+      { metric: 'ram', threshold: 0.00025, baseAngle: -0.34, step: 0.055, baseRank: 110 },
+      { metric: 'gpu', threshold: 0.001, baseAngle: -0.32, step: 0.06, baseRank: 120, enabled: config.enableProcessGpu !== false },
+      { metric: 'disk', threshold: 0.001, baseAngle: 0.04, step: 0.06, baseRank: 125 }
+    ];
 
-    topByMetric(processes, 'ram', processLimit).forEach((process, index) => {
-      items.push({
-        id: `live:ram:${process.pid}`,
-        parentId: 'ram',
-        label: processLabel(process, index, 'ram', config),
-        category: 'ram',
-        kind: 'process',
-        metric: 'ram',
-        value: process.ram,
-        stats: process,
-        rank: 110 + index,
-        angleOffset: -0.34 + index * 0.055,
-        distance: 112
-      });
-    });
-
-    topByMetric(processes, 'gpu', processLimit, 0.001).forEach((process, index) => {
-      items.push({
-        id: `live:gpu:${process.pid}`,
-        parentId: 'gpu',
-        label: processLabel(process, index, 'gpu', config),
-        category: 'gpu',
-        kind: 'process',
-        metric: 'gpu',
-        value: process.gpu,
-        stats: process,
-        rank: 120 + index,
-        angleOffset: -0.32 + index * 0.06,
-        distance: 112
-      });
-    });
-
-    topByMetric(processes, 'disk', processLimit, 0.001).forEach((process, index) => {
-      items.push({
-        id: `live:disk:${process.pid}`,
-        parentId: 'disk',
-        label: processLabel(process, index, 'disk', config),
-        category: 'disk',
-        kind: 'process',
-        metric: 'disk',
-        value: process.disk,
-        stats: process,
-        rank: 125 + index,
-        angleOffset: 0.04 + index * 0.06,
-        distance: 112
-      });
-    });
+    for (const branch of metricBranches) {
+      if (branch.enabled === false) continue;
+      const selected = this.selectProcesses(processes, branch.metric, processLimit, branch.threshold);
+      for (const { process, slot } of selected) {
+        items.push({
+          id: `live:${branch.metric}:${process.pid}`,
+          parentId: branch.metric,
+          label: processLabel(process, slot, branch.metric, config),
+          category: branch.metric,
+          kind: 'process',
+          metric: branch.metric,
+          value: process[branch.metric],
+          stats: process,
+          rank: branch.baseRank + slot,
+          angleOffset: branch.baseAngle + slot * branch.step,
+          distance: 112
+        });
+      }
+    }
 
     drives.slice(0, driveLimit).forEach((drive, index) => {
       const driveKey = safeId(drive.name);
@@ -543,7 +550,7 @@ export class GraphModel {
         // when idle and let them brighten well past the structural leaves.
         node.glowBoost = isProcess ? 1.4 : node.liveKind === 'drive' ? 1.12 : 0.95;
         node.visibleFactor = isProcess
-          ? clamp(0.52 + node.activity * 1)
+          ? clamp(0.5 + node.activity * 1.05)
           : clamp(0.34 + node.activity * 1.2);
         node.caption = node.label;
         node.captionDetail = isProcess
@@ -556,7 +563,8 @@ export class GraphModel {
           node.targetRadius = lerp(3.2, 7.2, visualValue);
         } else {
           // Processes scale larger than any synthetic leaf so usage reads at a glance.
-          node.targetRadius = lerp(7, 18, visualValue);
+          // Lower idle floor than before keeps a busy branch from looking crowded.
+          node.targetRadius = lerp(5.5, 17, visualValue);
         }
       } else {
         const base = node.category === 'ram'
@@ -571,11 +579,30 @@ export class GraphModel {
       }
     }
 
+    this.flagBranchLeaders();
+
     for (const link of this.links) {
       const sourceActivity = link.source.activity ?? 0;
       const targetActivity = link.target.activity ?? 0;
       link.activity = clamp(Math.max(sourceActivity, targetActivity) * (link.secondary ? 0.72 : 1));
       link.color = palette.category(link.category, link.activity);
+    }
+  }
+
+  // Mark the single hottest live process under each branch so NodeVisual can give it a
+  // subtle accent — the "top offender" for that resource.
+  flagBranchLeaders() {
+    const leaders = new Map();
+    for (const id of this.dynamicNodeIds) {
+      const node = this.nodeById.get(id);
+      if (!node || node.liveKind !== 'process') continue;
+      const current = leaders.get(node.category);
+      if (!current || node.value > current.value) leaders.set(node.category, node);
+    }
+    for (const id of this.dynamicNodeIds) {
+      const node = this.nodeById.get(id);
+      if (!node) continue;
+      node.isBranchLeader = node.liveKind === 'process' && leaders.get(node.category) === node;
     }
   }
 

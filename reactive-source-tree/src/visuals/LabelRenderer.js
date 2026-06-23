@@ -27,7 +27,7 @@ function labelPriority(node) {
   return 1;
 }
 
-function rectsOverlap(a, b, pad = 2) {
+function rectsOverlap(a, b, pad) {
   return (
     a.left - pad < b.right &&
     a.right + pad > b.left &&
@@ -70,7 +70,7 @@ export class LabelRenderer {
     }
   }
 
-  update(nodes, config) {
+  update(nodes, config, dt = 0.016) {
     const wanted = new Set();
     this.container.visible = true;
     this.candidates.length = 0;
@@ -85,6 +85,9 @@ export class LabelRenderer {
         label.lastCaptionText = label.text;
         label.roundPixels = true;
         label.resolution = 2;
+        label.fade = 0;
+        label.shown = false;
+        label.alpha = 0;
         this.labels.set(node.id, label);
         this.container.addChild(label);
       }
@@ -111,7 +114,8 @@ export class LabelRenderer {
       label.x = node.renderX + horizontal * outward;
       label.y = node.renderY + vertical * outward;
       label.anchor.set(anchorX, anchorY);
-      label.alpha = node.type === 'leaf'
+      // Store the target alpha; the actual alpha is driven by the declutter fade below.
+      label.baseAlpha = node.type === 'leaf'
         ? clamp(0.32 + node.activity * 0.46) * node.visibleFactor
         : activityAlpha * node.visibleFactor;
       label.scale.set(node.type === 'root' ? 1.05 : node.type === 'category' ? 0.98 : node.type === 'live' ? 0.9 : 0.78);
@@ -124,20 +128,29 @@ export class LabelRenderer {
       });
     }
 
+    // Labels whose node is gone this frame fade out instead of popping off.
     for (const [id, label] of this.labels.entries()) {
-      if (!wanted.has(id)) {
-        label.visible = false;
-      }
+      if (!wanted.has(id)) label.declutterShow = false;
     }
 
-    this.declutter();
+    this.declutter(config);
+    this.applyFade(dt, wanted);
   }
 
-  // Greedy anti-overlap pass: place highest priority / most active captions first and
-  // hide any lower-priority caption whose box would collide, keeping the graph readable.
-  declutter() {
+  // Greedy anti-overlap pass: place highest priority / currently-shown / most active
+  // captions first and hide any lower one whose box collides. Sorting shown labels ahead
+  // of equal-priority newcomers gives incumbency, which (with the fade) stops flicker.
+  declutter(config) {
     const candidates = this.candidates;
-    candidates.sort((a, b) => b.priority - a.priority || b.activity - a.activity);
+    candidates.sort(
+      (a, b) =>
+        b.priority - a.priority ||
+        (b.label.shown === a.label.shown ? 0 : b.label.shown ? 1 : -1) ||
+        b.activity - a.activity
+    );
+
+    const density = config.labelDensity ?? 1;
+    const pad = Math.max(-2, (1.2 - density) * 6);
 
     const placed = this.placed;
     placed.length = 0;
@@ -145,7 +158,7 @@ export class LabelRenderer {
     for (const candidate of candidates) {
       const label = candidate.label;
       if (!candidate.baseVisible) {
-        label.visible = false;
+        label.declutterShow = false;
         continue;
       }
 
@@ -157,17 +170,32 @@ export class LabelRenderer {
 
       let collides = false;
       for (let i = 0; i < placed.length; i += 1) {
-        if (rectsOverlap(rect, placed[i])) {
+        if (rectsOverlap(rect, placed[i], pad)) {
           collides = true;
           break;
         }
       }
 
-      if (collides) {
-        label.visible = false;
-      } else {
-        label.visible = true;
-        placed.push(rect);
+      label.declutterShow = !collides;
+      if (!collides) placed.push(rect);
+    }
+  }
+
+  // Ease every label's visibility toward its decluttered target and prune labels that
+  // have fully faded out and are no longer wanted, so the Text pool stays bounded.
+  applyFade(dt, wanted) {
+    const k = Math.min(1, dt * 11);
+    for (const [id, label] of this.labels.entries()) {
+      const target = label.declutterShow ? 1 : 0;
+      label.fade += (target - label.fade) * k;
+      label.shown = label.declutterShow === true;
+      label.alpha = (label.baseAlpha ?? 0) * label.fade;
+      label.visible = label.fade > 0.02;
+
+      if (!wanted.has(id) && label.fade <= 0.02) {
+        this.container.removeChild(label);
+        label.destroy();
+        this.labels.delete(id);
       }
     }
   }

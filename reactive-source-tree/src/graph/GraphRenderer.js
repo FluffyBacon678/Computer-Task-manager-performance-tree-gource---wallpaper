@@ -52,6 +52,6 @@ export class GraphRenderer {
       this.nodeVisual.draw(node, activityState, config, time);
     }
 
-    this.labelRenderer.update(model.nodes, config);
+    this.labelRenderer.update(model.nodes, config, dt);
   }
 }

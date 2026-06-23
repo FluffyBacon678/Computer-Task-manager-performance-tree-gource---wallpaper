@@ -73,15 +73,21 @@ export class NodeVisual {
       );
 
       if (isProcess) {
-        // Bright white core that grows with usage; on the ADD-blended node layer this
-        // makes hot processes pop forward as the focal points of the graph.
-        this.graphics.beginFill(0xffffff, Math.min(0.85, 0.18 + heat * 0.55) * visible);
-        this.graphics.drawCircle(node.renderX, node.renderY, Math.max(0.8, radius * 0.42));
+        // White core tied to usage: faint and small when idle, blazing and broad when
+        // busy. On the ADD-blended node layer this makes hot processes pop forward.
+        this.graphics.beginFill(0xffffff, Math.min(0.85, 0.05 + heat * 0.7) * visible);
+        this.graphics.drawCircle(node.renderX, node.renderY, Math.max(0.6, radius * (0.3 + heat * 0.28)));
         this.graphics.endFill();
 
         if (!config.lowPerformanceMode) {
           this.graphics.lineStyle(0.8, 0xffffff, 0.16 + progress * 0.28);
           this.graphics.drawCircle(node.renderX, node.renderY, ringRadius + 4);
+
+          if (node.isBranchLeader) {
+            // Accent the hottest process in each branch (the "top offender").
+            this.graphics.lineStyle(1.2, node.color, 0.5 + progress * 0.34);
+            this.graphics.drawCircle(node.renderX, node.renderY, ringRadius + 7.5);
+          }
         }
       }
     }

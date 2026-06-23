@@ -101,6 +101,18 @@ export class GraphLayout {
     this.step(40);
   }
 
+  // Incremental update for live process/drive nodes appearing or disappearing.
+  // Re-binds the existing simulation to the new node/link arrays (preserving the
+  // positions of nodes that stayed) and gives only a gentle re-heat, so the whole
+  // constellation no longer lurches every time the top-process set changes.
+  syncTopology(model) {
+    this.model = model;
+    this.simulation.nodes(model.nodes);
+    this.simulation.force('link').links(model.links);
+    this.simulation.alpha(Math.max(this.simulation.alpha(), 0.32));
+    this.step(6);
+  }
+
   linkDistance(link) {
     const ramExpansion = 1 + this.activityState.value('ram') * 0.35;
     const loadExpansion = 1 + this.activityState.value('overallLoad') * 0.12;
