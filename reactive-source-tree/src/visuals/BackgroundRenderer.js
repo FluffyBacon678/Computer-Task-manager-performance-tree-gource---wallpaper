@@ -1,12 +1,16 @@
 import { Graphics } from 'pixi.js';
 import { clamp, lerp, mixColor, randomRange } from '../utils/MathUtils.js';
 import { createNoise2D } from '../utils/Noise.js';
+import { SpriteField } from './SpriteField.js';
 
 export class BackgroundRenderer {
   constructor(parent, palette, width, height) {
     this.palette = palette;
     this.graphics = new Graphics();
     parent.addChild(this.graphics);
+    // The drifting dust specks (the largest count here) become batched GPU sprites; the
+    // few big gradient/mist discs stay as Graphics.
+    this.dustField = new SpriteField(parent, 256);
     this.noise = createNoise2D(66);
     this.width = width;
     this.height = height;
@@ -65,6 +69,7 @@ export class BackgroundRenderer {
     g.endFill();
 
     const dustLimit = config.lowPerformanceMode ? 72 : this.dust.length;
+    this.dustField.begin();
     for (let i = 0; i < dustLimit; i += 1) {
       const dust = this.dust[i];
       const driftX = this.noise(dust.x * 5 + time * 0.012, dust.phase) - 0.5;
@@ -72,10 +77,10 @@ export class BackgroundRenderer {
       const x = ((dust.x * width + driftX * 38 + width) % width);
       const y = ((dust.y * height + driftY * 34 + height) % height);
       const shimmer = lerp(0.6, 1, this.noise(dust.phase, time * 0.18));
-      g.beginFill(this.palette.colors.dust, dust.alpha * shimmer * (0.36 + load * 0.4));
-      g.drawCircle(x, y, dust.size * (1 + gpu * 0.45));
-      g.endFill();
+      const size = dust.size * (1 + gpu * 0.45);
+      this.dustField.draw(x, y, size * 2.4, this.palette.colors.dust, dust.alpha * shimmer * (0.36 + load * 0.4));
     }
+    this.dustField.end();
 
     if (!config.lowPerformanceMode) {
       for (let i = 0; i < 5; i += 1) {
