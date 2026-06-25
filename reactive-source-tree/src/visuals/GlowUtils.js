@@ -1,13 +1,16 @@
 import { Graphics } from 'pixi.js';
 
 export function drawGlowCircle(graphics, x, y, radius, color, alpha = 1, strength = 1, steps = 3) {
-  for (let i = steps; i >= 1; i -= 1) {
-    const t = i / steps;
-    graphics.beginFill(color, alpha * 0.08 * strength * t);
-    graphics.drawCircle(x, y, radius * (1.45 + i * 0.9));
-    graphics.endFill();
-  }
-
+  // Flat-filled discs can't make a true gradient, so each disc adds a hard edge. Use the
+  // FEWEST that still read as glow — one broad faint halo + one tighter halo + the solid
+  // core — so a node looks like a glowing dot, not a bullseye of concentric rings.
+  const reach = radius * (1.4 + steps * 0.9);
+  graphics.beginFill(color, alpha * 0.05 * strength);
+  graphics.drawCircle(x, y, reach);
+  graphics.endFill();
+  graphics.beginFill(color, alpha * 0.1 * strength);
+  graphics.drawCircle(x, y, radius + (reach - radius) * 0.42);
+  graphics.endFill();
   graphics.beginFill(color, alpha);
   graphics.drawCircle(x, y, radius);
   graphics.endFill();
