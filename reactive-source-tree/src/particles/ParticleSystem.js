@@ -1,6 +1,6 @@
-import { Graphics } from 'pixi.js';
 import { clamp, randomRange, TAU, weightedPick } from '../utils/MathUtils.js';
 import { ParticlePool } from './ParticlePool.js';
+import { SpriteField } from '../visuals/SpriteField.js';
 
 const categoryWeights = [
   { value: 'cpu', weight: 1.2 },
@@ -15,8 +15,7 @@ export class ParticleSystem {
   constructor(parent, palette, maxParticles = 420) {
     this.palette = palette;
     this.pool = new ParticlePool(maxParticles);
-    this.graphics = new Graphics();
-    parent.addChild(this.graphics);
+    this.field = new SpriteField(parent, 1024);
     this.spawnAccumulator = 0;
   }
 
@@ -106,24 +105,20 @@ export class ParticleSystem {
   }
 
   render(config) {
-    this.graphics.clear();
+    this.field.begin();
+    // Additive sprites accumulate, so keep per-sprite alpha modest to avoid blowing out
+    // to white where many particles overlap near a hub.
+    const glow = 0.4 + config.glowStrength * 0.28;
     for (let i = 0; i < this.pool.maxParticles; i += 1) {
       const particle = this.pool.particles[i];
       if (!particle.active) continue;
       const t = particle.life / particle.maxLife;
       const alpha = clamp((1 - t) * particle.alpha);
       const size = particle.size * (1 + t * 0.35);
-
-      if (!config.lowPerformanceMode) {
-        this.graphics.beginFill(particle.color, alpha * 0.12 * config.glowStrength);
-        this.graphics.drawCircle(particle.x, particle.y, size * 3.2);
-        this.graphics.endFill();
-      }
-
-      this.graphics.beginFill(particle.color, alpha);
-      this.graphics.drawCircle(particle.x, particle.y, size);
-      this.graphics.endFill();
+      const reach = size * (config.lowPerformanceMode ? 1.9 : 3);
+      this.field.draw(particle.x, particle.y, reach, particle.color, alpha * glow);
     }
+    this.field.end();
   }
 
   activeCount() {
