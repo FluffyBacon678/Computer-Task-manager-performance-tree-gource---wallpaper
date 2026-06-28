@@ -1,6 +1,6 @@
-import { Graphics } from 'pixi.js';
 import { clamp, lerp, randomRange } from '../utils/MathUtils.js';
 import { ParticlePool } from './ParticlePool.js';
+import { SpriteField } from '../visuals/SpriteField.js';
 
 function pointOnLink(link, progress, time = 0) {
   const source = link.source;
@@ -29,8 +29,7 @@ export class EdgeParticleSystem {
   constructor(parent, palette, maxParticles = 360) {
     this.palette = palette;
     this.pool = new ParticlePool(maxParticles);
-    this.graphics = new Graphics();
-    parent.addChild(this.graphics);
+    this.field = new SpriteField(parent, 1024);
     this.accumulators = new Map();
   }
 
@@ -40,7 +39,7 @@ export class EdgeParticleSystem {
 
   configure(config) {
     const base = config.lowPerformanceMode ? 160 : 390;
-    this.pool.resize(base * config.particleAmount);
+    this.pool.resize(base * config.particleAmount * (config.qualityScale ?? 1));
   }
 
   spawn(link, category, direction, activity) {
@@ -115,7 +114,9 @@ export class EdgeParticleSystem {
   }
 
   render(time, config) {
-    this.graphics.clear();
+    this.field.begin();
+    // Keep additive sprite alpha modest so dense packets don't blow out to white.
+    const glow = 0.4 + config.glowStrength * 0.28;
     for (let i = 0; i < this.pool.maxParticles; i += 1) {
       const particle = this.pool.particles[i];
       if (!particle.active || !particle.link) continue;
@@ -123,17 +124,10 @@ export class EdgeParticleSystem {
       const t = particle.life / particle.maxLife;
       const alpha = clamp((1 - t) * particle.alpha);
       const size = lerp(particle.size, particle.size * 0.45, t);
-
-      if (!config.lowPerformanceMode) {
-        this.graphics.beginFill(particle.color, alpha * 0.14 * config.glowStrength);
-        this.graphics.drawCircle(point.x, point.y, size * 3.4);
-        this.graphics.endFill();
-      }
-
-      this.graphics.beginFill(particle.color, alpha);
-      this.graphics.drawCircle(point.x, point.y, size);
-      this.graphics.endFill();
+      const reach = size * (config.lowPerformanceMode ? 2 : 3.2);
+      this.field.draw(point.x, point.y, reach, particle.color, alpha * glow);
     }
+    this.field.end();
   }
 
   activeCount() {

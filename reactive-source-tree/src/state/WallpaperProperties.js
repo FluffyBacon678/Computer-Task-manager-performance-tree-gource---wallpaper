@@ -76,6 +76,8 @@ export class WallpaperProperties {
       propertyValue(properties.low_performance_mode, c.lowPerformanceMode),
       c.lowPerformanceMode
     );
+    c.renderScale = clamp(Number(propertyValue(properties.render_scale, c.renderScale)), 0.5, 2);
+    c.adaptiveQuality = toBool(propertyValue(properties.adaptive_quality, c.adaptiveQuality), c.adaptiveQuality);
 
     const paletteMode = propertyValue(properties.palette_mode, c.paletteMode);
     if (typeof paletteMode === 'string') c.paletteMode = paletteMode;

@@ -1,6 +1,7 @@
 import { Application, BLEND_MODES, Container, Graphics } from 'pixi.js';
 import { ActivityState } from './state/ActivityState.js';
 import { ActorSystem } from './particles/ActorSystem.js';
+import { AdaptiveQuality } from './utils/AdaptiveQuality.js';
 import { BackgroundRenderer } from './visuals/BackgroundRenderer.js';
 import { BeamSystem } from './particles/BeamSystem.js';
 import { CameraController } from './visuals/CameraController.js';
@@ -89,6 +90,16 @@ const audioInput = new WallpaperAudioInput(activityState, config);
 const telemetryInput = new TelemetryWebSocketInput(activityState, config);
 const pointerInput = new PointerInput();
 const hoverController = new HoverController();
+const adaptiveQuality = new AdaptiveQuality();
+
+// Render resolution = device pixel ratio scaled by the user's Render Scale, capped to
+// keep GPU fill-rate sane on HiDPI panels. Default (1.0) preserves the original behavior.
+function applyRenderScale() {
+  const target = Math.min(2, Math.max(0.5, (window.devicePixelRatio || 1) * (config.renderScale ?? 1)));
+  if (Math.abs(app.renderer.resolution - target) < 0.01) return;
+  app.renderer.resolution = target;
+  app.renderer.resize(window.innerWidth, window.innerHeight);
+}
 
 const cursorGraphics = new Graphics();
 glowLayer.addChild(cursorGraphics);
@@ -118,6 +129,8 @@ function handleConfigChange(nextConfig) {
   if (graphModel?.maybeRebuild(nextConfig, palette)) {
     graphLayout.reset(graphModel, activityState, nextConfig);
   }
+
+  applyRenderScale();
 }
 
 function updateDebugOverlay(dt) {
@@ -133,6 +146,7 @@ function updateDebugOverlay(dt) {
   debugOverlay.textContent = [
     'Reactive Source Tree',
     `fps ${performanceMonitor.fps.toFixed(1)} | nodes ${performanceMonitor.nodeCount} | particles ${performanceMonitor.activeParticles}`,
+    `res ${app.renderer.resolution.toFixed(2)} | quality ${(config.qualityScale ?? 1).toFixed(2)} | renderScale ${config.renderScale}`,
     `telemetry ${performanceMonitor.telemetryStatus} | proc ${telemetryInput.liveTree.processes.length} | audio ${audioInput.hasRecentAudio() ? 'live' : 'demo'}`,
     `cpu ${snapshot.cpu.toFixed(2)}  ram ${snapshot.ram.toFixed(2)}  gpu ${snapshot.gpu.toFixed(2)}`,
     `disk ${snapshot.disk.toFixed(2)}  net ${Math.max(snapshot.netDown, snapshot.netUp).toFixed(2)}  temp ${snapshot.temperature.toFixed(2)}`,
@@ -218,6 +232,7 @@ app.ticker.add(() => {
   }
 
   performanceMonitor.update(rawDt);
+  config.qualityScale = adaptiveQuality.update(performanceMonitor.fps, rawDt, config.adaptiveQuality !== false);
   performanceMonitor.setStats({
     activeParticles:
       edgeParticleSystem.activeCount() +

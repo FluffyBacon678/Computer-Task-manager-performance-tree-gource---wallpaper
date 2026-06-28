@@ -59,6 +59,8 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - telemetry URL
 - debug overlay
 - low performance mode
+- render scale (0.5–2× device resolution; lower it to save GPU fill-rate on HiDPI panels)
+- adaptive quality (auto-scales particle counts to hold a smooth frame rate)
 
 The code also handles missing Wallpaper Engine APIs, so it runs normally in a browser.
 
@@ -159,6 +161,16 @@ The helper only binds to localhost and only broadcasts local machine stats to th
 
 ## Performance Tips
 
+- Particles, sparkles, and background dust are drawn as GPU-batched additive sprites of a
+  single baked glow texture (`SpriteField` / `GlowTexture`) rather than re-tessellated each
+  frame on the CPU — the GPU does the per-pixel work in a few batched draw calls.
+- **Adaptive quality** (on by default) watches the frame rate and quietly scales particle
+  counts down when the machine can't keep up, then back up when there's headroom — so one
+  wallpaper runs smoothly across very different GPUs.
+- **Render scale** lowers the internal resolution; on a HiDPI/4K panel dropping it to
+  ~0.75 is the single biggest GPU saving with little visible difference under the glow.
+- The telemetry helper reads the expensive GPU/temperature metrics on a slow (1.5s) cached
+  cadence, keeping only cpu/ram/net/disk on the fast loop.
 - Enable low performance mode to reduce particle counts and glow overdraw.
 - Lower particle amount before lowering graph density; the graph still looks good with fewer packets.
 - Disable labels for the cleanest and fastest wallpaper.

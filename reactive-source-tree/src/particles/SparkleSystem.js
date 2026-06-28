@@ -1,13 +1,12 @@
-import { Graphics } from 'pixi.js';
 import { clamp, randomRange, TAU } from '../utils/MathUtils.js';
 import { ParticlePool } from './ParticlePool.js';
+import { SpriteField } from '../visuals/SpriteField.js';
 
 export class SparkleSystem {
   constructor(parent, palette, maxSparkles = 180) {
     this.palette = palette;
     this.pool = new ParticlePool(maxSparkles);
-    this.graphics = new Graphics();
-    parent.addChild(this.graphics);
+    this.field = new SpriteField(parent, 256);
     this.accumulator = 0;
   }
 
@@ -16,7 +15,7 @@ export class SparkleSystem {
   }
 
   configure(config) {
-    this.pool.resize(config.lowPerformanceMode ? 60 : 180 * config.particleAmount);
+    this.pool.resize((config.lowPerformanceMode ? 60 : 180 * config.particleAmount) * (config.qualityScale ?? 1));
   }
 
   spawn(node, activity) {
@@ -65,29 +64,17 @@ export class SparkleSystem {
   }
 
   render(config) {
-    this.graphics.clear();
+    this.field.begin();
+    const glow = 0.55 + config.glowStrength * 0.35;
     for (let i = 0; i < this.pool.maxParticles; i += 1) {
       const sparkle = this.pool.particles[i];
       if (!sparkle.active) continue;
       const t = sparkle.life / sparkle.maxLife;
       const alpha = clamp((1 - t) * sparkle.alpha);
-      this.graphics.lineStyle({
-        width: 1,
-        color: sparkle.color,
-        alpha
-      });
-      const size = sparkle.size;
-      this.graphics.moveTo(sparkle.x - size, sparkle.y);
-      this.graphics.lineTo(sparkle.x + size, sparkle.y);
-      this.graphics.moveTo(sparkle.x, sparkle.y - size);
-      this.graphics.lineTo(sparkle.x, sparkle.y + size);
-
-      if (!config.lowPerformanceMode) {
-        this.graphics.beginFill(sparkle.color, alpha * 0.12 * config.glowStrength);
-        this.graphics.drawCircle(sparkle.x, sparkle.y, size * 4);
-        this.graphics.endFill();
-      }
+      const reach = sparkle.size * (config.lowPerformanceMode ? 2.4 : 3.6);
+      this.field.draw(sparkle.x, sparkle.y, reach, sparkle.color, alpha * glow);
     }
+    this.field.end();
   }
 
   activeCount() {

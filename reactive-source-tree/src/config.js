@@ -22,7 +22,10 @@ export const DEFAULT_CONFIG = {
   telemetryUrl: 'ws://127.0.0.1:17890',
   debugOverlay: false,
   lowPerformanceMode: false,
-  backgroundQuality: 1
+  backgroundQuality: 1,
+  renderScale: 1,
+  adaptiveQuality: true,
+  qualityScale: 1
 };
 
 export const ACTIVITY_KEYS = [
