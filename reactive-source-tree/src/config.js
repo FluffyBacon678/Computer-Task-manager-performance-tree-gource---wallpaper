@@ -25,7 +25,9 @@ export const DEFAULT_CONFIG = {
   backgroundQuality: 1,
   renderScale: 1,
   adaptiveQuality: true,
-  qualityScale: 1
+  qualityScale: 1,
+  bloom: false,
+  bloomStrength: 1
 };
 
 export const ACTIVITY_KEYS = [

@@ -78,6 +78,8 @@ export class WallpaperProperties {
     );
     c.renderScale = clamp(Number(propertyValue(properties.render_scale, c.renderScale)), 0.5, 2);
     c.adaptiveQuality = toBool(propertyValue(properties.adaptive_quality, c.adaptiveQuality), c.adaptiveQuality);
+    c.bloom = toBool(propertyValue(properties.bloom, c.bloom), c.bloom);
+    c.bloomStrength = clamp(Number(propertyValue(properties.bloom_strength, c.bloomStrength)), 0, 2);
 
     const paletteMode = propertyValue(properties.palette_mode, c.paletteMode);
     if (typeof paletteMode === 'string') c.paletteMode = paletteMode;

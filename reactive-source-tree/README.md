@@ -61,6 +61,7 @@ Import `dist/index.html` in Wallpaper Engine. Use the source project with `npm r
 - low performance mode
 - render scale (0.5–2× device resolution; lower it to save GPU fill-rate on HiDPI panels)
 - adaptive quality (auto-scales particle counts to hold a smooth frame rate)
+- bloom (optional real GPU bloom pass over the scene) and bloom strength — off by default
 
 The code also handles missing Wallpaper Engine APIs, so it runs normally in a browser.
 
