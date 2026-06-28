@@ -200,6 +200,19 @@
         "text": "Adaptive Quality (auto FPS)",
         "type": "bool",
         "value": true
+      },
+      "bloom": {
+        "text": "Bloom (GPU glow)",
+        "type": "bool",
+        "value": false
+      },
+      "bloom_strength": {
+        "text": "Bloom Strength",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
       }
     }
   }

@@ -1,4 +1,5 @@
 import { Application, BLEND_MODES, Container, Graphics } from 'pixi.js';
+import { AdvancedBloomFilter } from '@pixi/filter-advanced-bloom';
 import { ActivityState } from './state/ActivityState.js';
 import { ActorSystem } from './particles/ActorSystem.js';
 import { AdaptiveQuality } from './utils/AdaptiveQuality.js';
@@ -101,6 +102,23 @@ function applyRenderScale() {
   app.renderer.resize(window.innerWidth, window.innerHeight);
 }
 
+// Optional GPU bloom: a real additive bloom pass over the whole scene, computed per-pixel
+// on the GPU. Off by default (it changes the look and costs GPU fill-rate); when on it
+// only blooms pixels brighter than the threshold, so the dark background stays dark.
+const bloomFilter = new AdvancedBloomFilter({
+  threshold: 0.4,
+  bloomScale: 1,
+  brightness: 1,
+  blur: 6,
+  quality: 4
+});
+
+function applyBloom() {
+  bloomFilter.bloomScale = config.bloomStrength ?? 1;
+  app.stage.filterArea = app.screen;
+  app.stage.filters = config.bloom ? [bloomFilter] : null;
+}
+
 const cursorGraphics = new Graphics();
 glowLayer.addChild(cursorGraphics);
 
@@ -131,7 +149,11 @@ function handleConfigChange(nextConfig) {
   }
 
   applyRenderScale();
+  applyBloom();
 }
+
+// Apply the initial bloom state (WallpaperProperties fires handleConfigChange afterwards).
+applyBloom();
 
 function updateDebugOverlay(dt) {
   if (!debugOverlay) return;
