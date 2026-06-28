@@ -39,7 +39,7 @@ export class EdgeParticleSystem {
 
   configure(config) {
     const base = config.lowPerformanceMode ? 160 : 390;
-    this.pool.resize(base * config.particleAmount);
+    this.pool.resize(base * config.particleAmount * (config.qualityScale ?? 1));
   }
 
   spawn(link, category, direction, activity) {

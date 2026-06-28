@@ -6,6 +6,9 @@ const HOST = '127.0.0.1';
 const PORT = Number(process.env.PORT ?? 17890);
 const UPDATE_INTERVAL_MS = 200;
 const RICH_TELEMETRY_INTERVAL_MS = 1000;
+// GPU controller info and CPU/GPU temperature change slowly and are expensive to read
+// (driver/WMI queries), so they are polled on this slower cadence instead of every tick.
+const SLOW_TELEMETRY_INTERVAL_MS = 1500;
 const MAX_PROCESSES = 24;
 const MAX_DRIVES = 8;
 // Throughput ceilings used to map raw bytes/sec counter readings to a 0..1 share.
@@ -23,6 +26,10 @@ let richTelemetryCache = {
 let lastRichTelemetryAt = 0;
 let richTelemetryInFlight = false;
 let loggedRichTelemetryReady = false;
+
+let slowMetricsCache = { gpu: null, temperature: null };
+let lastSlowMetricsAt = 0;
+let slowMetricsInFlight = false;
 
 function clamp(value, min = 0, max = 1) {
   if (value === null || value === undefined || Number.isNaN(value)) return null;
@@ -152,14 +159,35 @@ async function collectRichTelemetry(globalDiskActivity) {
   }
 }
 
+// GPU controller + temperature: read on a slow cadence and cache, since they are costly
+// and change slowly. Runs async/non-blocking so it never holds up the fast metrics.
+async function collectSlowMetrics() {
+  const [graphics, temperature] = await Promise.allSettled([si.graphics(), si.cpuTemperature()]);
+  const controller = graphics.status === 'fulfilled' ? graphics.value.controllers?.[0] : null;
+  const gpuUtilization = firstNumber(
+    controller?.utilizationGpu,
+    controller?.utilizationMemory,
+    controller?.memoryUsed && controller?.memoryTotal
+      ? (controller.memoryUsed / controller.memoryTotal) * 100
+      : null
+  );
+  const tempValue = temperature.status === 'fulfilled'
+    ? firstNumber(temperature.value.max, temperature.value.main)
+    : null;
+  const gpuTemperature = firstNumber(controller?.temperatureGpu);
+  slowMetricsCache = {
+    gpu: gpuUtilization === null ? null : clamp(gpuUtilization / 100),
+    temperature: normalizeTemperature(firstNumber(gpuTemperature, tempValue))
+  };
+  lastSlowMetricsAt = Date.now();
+}
+
 async function collectTelemetry() {
-  const [load, mem, netStats, diskStats, graphics, temperature] = await Promise.allSettled([
+  const [load, mem, netStats, diskStats] = await Promise.allSettled([
     si.currentLoad(),
     si.mem(),
     si.networkStats(),
-    si.disksIO(),
-    si.graphics(),
-    si.cpuTemperature()
+    si.disksIO()
   ]);
 
   const cpu = load.status === 'fulfilled' ? clamp(load.value.currentLoad / 100) : 0;
@@ -207,28 +235,26 @@ async function collectTelemetry() {
       });
   }
 
-  const controller = graphics.status === 'fulfilled' ? graphics.value.controllers?.[0] : null;
-  const gpuUtilization = firstNumber(
-    controller?.utilizationGpu,
-    controller?.utilizationMemory,
-    controller?.memoryUsed && controller?.memoryTotal
-      ? (controller.memoryUsed / controller.memoryTotal) * 100
-      : null
-  );
-
-  const tempValue = temperature.status === 'fulfilled'
-    ? firstNumber(temperature.value.max, temperature.value.main)
-    : null;
-  const gpuTemperature = firstNumber(controller?.temperatureGpu);
+  if (!slowMetricsInFlight && Date.now() - lastSlowMetricsAt > SLOW_TELEMETRY_INTERVAL_MS) {
+    slowMetricsInFlight = true;
+    collectSlowMetrics()
+      .catch((error) => {
+        console.warn('Slow telemetry read failed:', error.message);
+        lastSlowMetricsAt = Date.now();
+      })
+      .finally(() => {
+        slowMetricsInFlight = false;
+      });
+  }
 
   return {
     cpu,
     ram,
-    gpu: gpuUtilization === null ? null : clamp(gpuUtilization / 100),
+    gpu: slowMetricsCache.gpu,
     disk,
     netDown: normalizeBytesPerSecond(network.rx, 60 * 1024 * 1024),
     netUp: normalizeBytesPerSecond(network.tx, 25 * 1024 * 1024),
-    temperature: normalizeTemperature(firstNumber(gpuTemperature, tempValue)),
+    temperature: slowMetricsCache.temperature,
     processes: richTelemetryCache.processes,
     drives: richTelemetryCache.drives
   };

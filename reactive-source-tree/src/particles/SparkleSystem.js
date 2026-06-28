@@ -15,7 +15,7 @@ export class SparkleSystem {
   }
 
   configure(config) {
-    this.pool.resize(config.lowPerformanceMode ? 60 : 180 * config.particleAmount);
+    this.pool.resize((config.lowPerformanceMode ? 60 : 180 * config.particleAmount) * (config.qualityScale ?? 1));
   }
 
   spawn(node, activity) {

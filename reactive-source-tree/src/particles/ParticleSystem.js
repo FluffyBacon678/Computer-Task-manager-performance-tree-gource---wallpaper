@@ -25,7 +25,7 @@ export class ParticleSystem {
 
   configure(config) {
     const base = config.lowPerformanceMode ? 180 : 460;
-    this.pool.resize(base * config.particleAmount);
+    this.pool.resize(base * config.particleAmount * (config.qualityScale ?? 1));
   }
 
   spawn(x, y, color, category, options = {}) {
