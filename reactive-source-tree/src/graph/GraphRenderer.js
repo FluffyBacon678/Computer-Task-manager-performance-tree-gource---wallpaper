@@ -3,6 +3,7 @@ import { clamp, lerp } from '../utils/MathUtils.js';
 import { LinkVisual } from './LinkVisual.js';
 import { NodeVisual } from './NodeVisual.js';
 import { LabelRenderer } from '../visuals/LabelRenderer.js';
+import { SpriteField } from '../visuals/SpriteField.js';
 
 export class GraphRenderer {
   constructor(layers, palette) {
@@ -10,14 +11,15 @@ export class GraphRenderer {
     this.palette = palette;
 
     this.linkGraphics = new Graphics();
-    this.glowGraphics = new Graphics();
     this.nodeGraphics = new Graphics();
     this.layers.graphLineLayer.addChild(this.linkGraphics);
-    this.layers.glowLayer.addChild(this.glowGraphics);
     this.layers.nodeLayer.addChild(this.nodeGraphics);
+    // Node halos are batched GPU sprites in the (otherwise unused) glow layer, which sits
+    // behind the node cores/rings — so the crisp cores stay on top.
+    this.glowField = new SpriteField(this.layers.glowLayer, 256);
 
     this.linkVisual = new LinkVisual(this.linkGraphics);
-    this.nodeVisual = new NodeVisual(this.nodeGraphics);
+    this.nodeVisual = new NodeVisual(this.nodeGraphics, this.glowField);
     this.labelRenderer = new LabelRenderer(this.layers.uiLayer, palette);
   }
 
@@ -40,7 +42,7 @@ export class GraphRenderer {
 
     this.linkGraphics.clear();
     this.nodeGraphics.clear();
-    this.glowGraphics.clear();
+    this.glowField.begin();
 
     const glowStrength = config.lowPerformanceMode ? config.glowStrength * 0.42 : config.glowStrength;
     for (const link of model.links) {
@@ -64,6 +66,7 @@ export class GraphRenderer {
       }
     }
 
+    this.glowField.end();
     this.labelRenderer.update(model.nodes, config, dt);
   }
 }

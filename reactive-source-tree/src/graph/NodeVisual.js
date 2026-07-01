@@ -1,4 +1,3 @@
-import { drawGlowCircle } from '../visuals/GlowUtils.js';
 import { clamp, TAU } from '../utils/MathUtils.js';
 
 const BLOOM_DURATION = 0.55;
@@ -13,8 +12,9 @@ function easeOutBack(t) {
 }
 
 export class NodeVisual {
-  constructor(graphics) {
+  constructor(graphics, glowField) {
     this.graphics = graphics;
+    this.glowField = glowField;
   }
 
   draw(node, activityState, config, time) {
@@ -50,18 +50,14 @@ export class NodeVisual {
       : 0;
     const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9));
     const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4) * visible * lifeAlpha;
-    const glowStrengthBase = (config.lowPerformanceMode ? config.glowStrength * 0.45 : config.glowStrength) * (1 + flare * 0.8 + focus * 1.1);
-
-    drawGlowCircle(
-      this.graphics,
-      node.renderX,
-      node.renderY,
-      radius,
-      node.color,
-      alpha,
-      glowStrengthBase * (node.type === 'root' ? 1.6 : boost),
-      node.type === 'leaf' || config.lowPerformanceMode ? 2 : 4
-    );
+    // Soft halo → one batched GPU sprite (smooth gradient, GPU fill); crisp core → Graphics.
+    const haloMul = (config.lowPerformanceMode ? 0.55 : 1) * config.glowStrength;
+    const haloAlpha = Math.min(1, alpha * (0.3 + 0.45 * haloMul) * (node.type === 'root' ? 1.5 : boost));
+    const haloReach = radius * (node.type === 'leaf' || config.lowPerformanceMode ? 3 : 4.5);
+    this.glowField.draw(node.renderX, node.renderY, haloReach, node.color, haloAlpha);
+    this.graphics.beginFill(node.color, alpha);
+    this.graphics.drawCircle(node.renderX, node.renderY, radius);
+    this.graphics.endFill();
 
     if (focus > 0.06) {
       this.graphics.lineStyle(1.3, 0xffffff, 0.5 * focus);
