@@ -426,13 +426,19 @@ export class GraphModel {
     // One node per process under its busiest branch (option B). The single ring shows the
     // dominant metric; the label still carries the full cpu/ram/gpu/disk breakdown.
     const selected = this.selectTopProcesses(processes, maxProcesses);
+    // Cap processes per branch so no single resource (usually RAM, which most processes are
+    // "busiest" on) hogs the layout and runs its labels off-screen. `selected` is
+    // score-ordered, so each branch keeps its heaviest few and drops the overflow.
+    const perBranchCap = config.lowPerformanceMode ? 5 : 8;
     const homeByPid = new Map();
     const pidsByBranch = new Map();
     for (const process of selected) {
       const home = this.homeBranch(process, enabledBranches);
-      homeByPid.set(process.pid, home);
       if (!pidsByBranch.has(home)) pidsByBranch.set(home, []);
-      pidsByBranch.get(home).push(process.pid);
+      const list = pidsByBranch.get(home);
+      if (list.length >= perBranchCap) continue;
+      list.push(process.pid);
+      homeByPid.set(process.pid, home);
     }
     this.processHome = homeByPid;
 
@@ -447,6 +453,7 @@ export class GraphModel {
 
     for (const process of selected) {
       const branch = homeByPid.get(process.pid);
+      if (!branch) continue;
       const slot = slotMaps.get(branch)?.get(process.pid) ?? 0;
       const place = BRANCH_PLACEMENT[branch] ?? { baseAngle: 0, step: 0.055 };
       items.push({
