@@ -3,6 +3,10 @@ import { clamp } from '../utils/MathUtils.js';
 
 function captionText(node) {
   const title = node.caption || node.label;
+  // Idle process nodes show only their one-word name (the full CPU/RAM/GPU/DISK card
+  // appears on hover). This keeps the dense process fans uncluttered but still tells you
+  // what each ball is, so you know where to hover.
+  if (node.type === 'live' && node.liveKind === 'process') return title;
   return node.captionDetail ? `${title}\n${node.captionDetail}` : title;
 }
 

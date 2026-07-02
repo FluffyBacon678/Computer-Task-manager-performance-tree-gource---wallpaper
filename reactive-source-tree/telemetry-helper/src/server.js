@@ -9,7 +9,7 @@ const RICH_TELEMETRY_INTERVAL_MS = 1000;
 // GPU controller info and CPU/GPU temperature change slowly and are expensive to read
 // (driver/WMI queries), so they are polled on this slower cadence instead of every tick.
 const SLOW_TELEMETRY_INTERVAL_MS = 1500;
-const MAX_PROCESSES = 24;
+const MAX_PROCESSES = 40; // matches the wallpaper's Max Processes slider ceiling
 const MAX_DRIVES = 8;
 // Throughput ceilings used to map raw bytes/sec counter readings to a 0..1 share.
 const PROCESS_DISK_CEILING = 80 * 1024 * 1024; // 80 MB/s ~ a busy single process

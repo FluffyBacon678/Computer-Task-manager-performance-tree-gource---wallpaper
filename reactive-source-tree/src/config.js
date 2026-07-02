@@ -49,7 +49,7 @@ export const CATEGORY_DEFINITIONS = [
   {
     id: 'cpu',
     label: 'CPU',
-    angle: -92,
+    angle: -90,
     leaves: [
       'core_01',
       'core_02',
@@ -74,31 +74,31 @@ export const CATEGORY_DEFINITIONS = [
   {
     id: 'ram',
     label: 'RAM',
-    angle: -28,
+    angle: -30,
     leaves: ['used', 'cache', 'standby', 'swap', 'pool_a', 'pool_b', 'pages', 'mapped']
   },
   {
     id: 'gpu',
     label: 'GPU',
-    angle: 34,
+    angle: 30,
     leaves: ['shader', 'vram', 'render', 'temperature', 'compute', 'raster', 'queue', 'frame']
   },
   {
     id: 'disk',
     label: 'DISK',
-    angle: 102,
+    angle: 90,
     leaves: ['nvme0', 'reads', 'writes', 'queue', 'cache', 'flush', 'journal', 'blocks']
   },
   {
     id: 'network',
     label: 'NETWORK',
-    angle: 174,
+    angle: 150,
     leaves: ['download', 'upload', 'packets', 'latency', 'dns', 'socket', 'stream', 'route']
   },
   {
     id: 'audio',
     label: 'AUDIO',
-    angle: 238,
+    angle: 210,
     leaves: ['bass', 'mid', 'treble', 'volume', 'left', 'right', 'beat', 'spectrum']
   }
 ];

@@ -91,12 +91,14 @@ so they read as structure rather than competing for attention.
 Process names are shown by default (`Show Process Names`); disable it to fall back to
 generic labels like `cpu_proc_01`.
 
-Node captions are compact two-line labels. The first line names the node, and the second
-line shows the current resource values, such as `CPU 42% | RAM 12%` for a process, or
-`USED 79%` / `BASS 31%` for system nodes. Labels use small bold monospace text with a dark
-stroke so they stay readable against the glow. A greedy anti-overlap pass keeps the graph
-uncluttered: when captions collide, the higher-priority one wins (core and branch labels
-first, then live processes, then drives, then synthetic leaves) and the loser is hidden.
+Captions are small bold monospace text with a dark stroke so they stay readable against the
+glow. A process node shows only its **one-word name** when idle (e.g. `chrome.exe`), so the
+dense process fans stay uncluttered but identifiable; **hovering** it expands a detailed
+card with the full `CPU / RAM / GPU / DISK` breakdown plus PID and thread count. Branch and
+core nodes always show their name and current value (e.g. `CPU 42%`). A greedy anti-overlap
+pass keeps the graph uncluttered: when captions collide, the higher-priority one wins (a
+hovered node first, then core and branch labels, then live processes, then drives) and the
+loser is hidden.
 
 By default, synthetic system leaves are unlabeled decoration. Real process leaves from the
 telemetry helper are labeled and use a circular progress ring to show the resource share

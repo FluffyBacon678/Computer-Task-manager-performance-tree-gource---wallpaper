@@ -1,5 +1,4 @@
 import { Application, BLEND_MODES, Container, Graphics } from 'pixi.js';
-import { AdvancedBloomFilter } from '@pixi/filter-advanced-bloom';
 import { ActivityState } from './state/ActivityState.js';
 import { ActorSystem } from './particles/ActorSystem.js';
 import { AdaptiveQuality } from './utils/AdaptiveQuality.js';
@@ -103,20 +102,31 @@ function applyRenderScale() {
 }
 
 // Optional GPU bloom: a real additive bloom pass over the whole scene, computed per-pixel
-// on the GPU. Off by default (it changes the look and costs GPU fill-rate); when on it
-// only blooms pixels brighter than the threshold, so the dark background stays dark.
-const bloomFilter = new AdvancedBloomFilter({
-  threshold: 0.4,
-  bloomScale: 1,
-  brightness: 1,
-  blur: 6,
-  quality: 4
-});
+// on the GPU. Off by default. The filter module is loaded via dynamic import() the first
+// time bloom is enabled, so when it's off the module is never fetched, never parsed, and
+// costs nothing (no load-time warnings, smaller initial bundle).
+let bloomFilter = null;
+let bloomLoading = false;
 
 function applyBloom() {
-  bloomFilter.bloomScale = config.bloomStrength ?? 1;
+  if (config.bloom && !bloomFilter) {
+    if (!bloomLoading) {
+      bloomLoading = true;
+      import('@pixi/filter-advanced-bloom')
+        .then(({ AdvancedBloomFilter }) => {
+          bloomFilter = new AdvancedBloomFilter({ threshold: 0.4, bloomScale: 1, brightness: 1, blur: 6, quality: 4 });
+          bloomLoading = false;
+          applyBloom();
+        })
+        .catch(() => {
+          bloomLoading = false;
+        });
+    }
+    return;
+  }
+  if (bloomFilter) bloomFilter.bloomScale = config.bloomStrength ?? 1;
   app.stage.filterArea = app.screen;
-  app.stage.filters = config.bloom ? [bloomFilter] : null;
+  app.stage.filters = config.bloom && bloomFilter ? [bloomFilter] : null;
 }
 
 const cursorGraphics = new Graphics();
