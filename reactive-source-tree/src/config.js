@@ -27,7 +27,8 @@ export const DEFAULT_CONFIG = {
   adaptiveQuality: true,
   qualityScale: 1,
   bloom: false,
-  bloomStrength: 1
+  bloomStrength: 1,
+  trails: true
 };
 
 export const ACTIVITY_KEYS = [

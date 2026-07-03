@@ -43,7 +43,7 @@ export class NodeVisual {
     const activity = node.activity ?? 0;
     const boost = node.glowBoost ?? 1;
     const pulse = node.type === 'root'
-      ? activityState.value('audioBass') * Math.sin(time * 9) * 1.8
+      ? (node.heartbeat ?? 0) * (1.4 + activityState.value('audioBass') * 2.4)
       : Math.sin(time * 2.4 + node.phase) * activity * 0.75;
     const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
       ? (1 - (time - node.birthTime) / 0.3) * 0.5

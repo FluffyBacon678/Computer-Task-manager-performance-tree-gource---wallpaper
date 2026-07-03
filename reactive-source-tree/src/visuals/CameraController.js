@@ -2,8 +2,10 @@ import { clamp, lerp } from '../utils/MathUtils.js';
 import { createNoise2D } from '../utils/Noise.js';
 
 export class CameraController {
-  constructor(container, width, height) {
-    this.container = container;
+  // containers: every camera-driven container (world back, trail scene, world overlay)
+  // gets the same transform so they stay perfectly registered.
+  constructor(containers, width, height) {
+    this.containers = Array.isArray(containers) ? containers : [containers];
     this.width = width;
     this.height = height;
     this.noise = createNoise2D(442);
@@ -34,7 +36,9 @@ export class CameraController {
     this.x = lerp(this.x, targetX, factor);
     this.y = lerp(this.y, targetY, factor);
 
-    this.container.position.set(this.x, this.y);
-    this.container.scale.set(this.scale);
+    for (const container of this.containers) {
+      container.position.set(this.x, this.y);
+      container.scale.set(this.scale);
+    }
   }
 }

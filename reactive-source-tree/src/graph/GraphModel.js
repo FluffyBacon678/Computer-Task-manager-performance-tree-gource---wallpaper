@@ -499,9 +499,10 @@ export class GraphModel {
         distance: 106
       });
 
+      // "free" was dropped as pure redundancy (always 1 - used, and the drive's own
+      // gauge plus hover card already carry capacity).
       [
         ['used', drive.used],
-        ['free', 1 - drive.used],
         ['activity', drive.activity]
       ].forEach(([metric, value], metricIndex) => {
         items.push({
@@ -513,7 +514,7 @@ export class GraphModel {
           metric,
           value,
           rank: driveRank + metricIndex + 1,
-          angleOffset: -0.18 + metricIndex * 0.18,
+          angleOffset: -0.09 + metricIndex * 0.18,
           distance: 54
         });
       });
@@ -651,6 +652,15 @@ export class GraphModel {
         node.targetRadius = lerp(18, 31, clamp(bass * 0.8 + overall * 0.4));
         node.visibleFactor = 1;
         node.glowBoost = 1;
+        // The core beats like a heart: rate driven by CPU (~45 BPM idle, ~130 pegged),
+        // with a lub-dub envelope instead of a sine wobble. NodeVisual scales the
+        // thump depth with audio bass.
+        const cpu = activityState.value('cpu');
+        node.heartPhase = ((node.heartPhase ?? 0) + dt * (0.75 + cpu * 1.45)) % 1;
+        const p = node.heartPhase;
+        const lub = Math.exp(-((p - 0.07) * (p - 0.07)) / 0.0024);
+        const dub = Math.exp(-((p - 0.33) * (p - 0.33)) / 0.004) * 0.55;
+        node.heartbeat = lub + dub;
         if (refreshCaptions) {
           node.caption = 'PC CORE';
           node.captionDetail = `LOAD ${formatPercent(overall)}`;

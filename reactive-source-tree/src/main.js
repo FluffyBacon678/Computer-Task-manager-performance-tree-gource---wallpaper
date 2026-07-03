@@ -20,6 +20,7 @@ import { PulseSystem } from './particles/PulseSystem.js';
 import { ResizeHandler } from './utils/ResizeHandler.js';
 import { SparkleSystem } from './particles/SparkleSystem.js';
 import { TelemetryWebSocketInput } from './state/TelemetryWebSocketInput.js';
+import { TrailRenderer } from './visuals/TrailRenderer.js';
 import { WallpaperAudioInput } from './state/WallpaperAudioInput.js';
 import { WallpaperProperties } from './state/WallpaperProperties.js';
 
@@ -56,8 +57,15 @@ const uiLayer = new Container();
 // object (the SpriteField sprites do it themselves; Graphics set it where they're created).
 // Node gauges stay on normal blending: their dark backing rings would vanish under ADD.
 
-worldLayer.addChild(graphLineLayer, glowLayer, particleLayer, pulseLayer, nodeLayer, uiLayer);
-app.stage.addChild(backgroundLayer, worldLayer);
+// The world is split into three camera-driven containers so the trail composite can sit
+// between them: links/glow behind, moving light (particles/pulses/beams) in the middle
+// via TrailRenderer, nodes/labels crisp on top.
+const trailScene = new Container();
+const worldOverlay = new Container();
+worldLayer.addChild(graphLineLayer, glowLayer);
+trailScene.addChild(particleLayer, pulseLayer);
+worldOverlay.addChild(nodeLayer, uiLayer);
+app.stage.addChild(backgroundLayer, worldLayer, worldOverlay);
 
 const layers = {
   backgroundLayer,
@@ -70,7 +78,8 @@ const layers = {
 };
 
 const backgroundRenderer = new BackgroundRenderer(backgroundLayer, palette, window.innerWidth, window.innerHeight);
-const cameraController = new CameraController(worldLayer, window.innerWidth, window.innerHeight);
+const cameraController = new CameraController([worldLayer, trailScene, worldOverlay], window.innerWidth, window.innerHeight);
+const trailRenderer = new TrailRenderer(app.renderer, trailScene, window.innerWidth, window.innerHeight);
 const graphModel = new GraphModel(config, palette);
 const graphLayout = new GraphLayout(graphModel, activityState, config);
 graphLayout.step(60);
@@ -127,6 +136,25 @@ function applyBloom() {
   app.stage.filters = config.bloom && bloomFilter ? [bloomFilter] : null;
 }
 
+// Motion trails: when on, the trailScene is rendered through the ping-pong trail
+// textures and only the composite sprite is on stage; when off, the trailScene itself
+// is mounted in the same z-slot and renders directly (no extra passes).
+let trailsMounted = null;
+
+function applyTrails() {
+  const mode = config.trails && !config.lowPerformanceMode ? 'trails' : 'direct';
+  if (trailsMounted === mode) return;
+  trailsMounted = mode;
+  const slot = () => app.stage.getChildIndex(worldOverlay);
+  if (mode === 'trails') {
+    if (trailScene.parent) app.stage.removeChild(trailScene);
+    if (!trailRenderer.sprite.parent) app.stage.addChildAt(trailRenderer.sprite, slot());
+  } else {
+    if (trailRenderer.sprite.parent) app.stage.removeChild(trailRenderer.sprite);
+    if (!trailScene.parent) app.stage.addChildAt(trailScene, slot());
+  }
+}
+
 const cursorGraphics = new Graphics();
 cursorGraphics.blendMode = BLEND_MODES.ADD;
 glowLayer.addChild(cursorGraphics);
@@ -134,6 +162,7 @@ glowLayer.addChild(cursorGraphics);
 new ResizeHandler(app, (width, height) => {
   backgroundRenderer.resize(width, height);
   cameraController.resize(width, height);
+  trailRenderer.resize(width, height);
 });
 
 let time = 0;
@@ -159,10 +188,12 @@ function handleConfigChange(nextConfig) {
 
   applyRenderScale();
   applyBloom();
+  applyTrails();
 }
 
-// Apply the initial bloom state (WallpaperProperties fires handleConfigChange afterwards).
+// Apply the initial bloom/trail state (WallpaperProperties fires handleConfigChange afterwards).
 applyBloom();
+applyTrails();
 
 function updateDebugOverlay(dt) {
   if (!debugOverlay) return;
@@ -250,6 +281,7 @@ app.ticker.add(() => {
   beamSystem.render(config);
   actorSystem.render(config);
   sparkleSystem.render(config);
+  if (trailsMounted === 'trails') trailRenderer.update(dt);
   overlayHud.update(activityState, config, rawDt);
 
   cursorGraphics.clear();
@@ -276,3 +308,7 @@ app.ticker.add(() => {
   });
   updateDebugOverlay(rawDt);
 });
+
+// Debug handle: lets devtools (and the hidden-tab preview, where rAF is paused) inspect
+// state and pump frames manually via __rst.app.ticker.update(t).
+window.__rst = { app, config, activityState, graphModel, performanceMonitor, telemetryInput };
