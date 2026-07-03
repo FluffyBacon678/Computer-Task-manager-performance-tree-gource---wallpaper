@@ -74,21 +74,18 @@ export class CameraController {
     this.massY = lerp(this.massY, measured.y, massFactor);
     this.mass = lerp(this.mass, measured.mass, massFactor);
 
-    // Lean: rotate so the heavy side sags toward the bottom of the screen — a weighted
-    // wheel, not a full flip. Capped fraction of the way, spring + damping so shifting
-    // load makes the whole constellation swing toward the new heavy branch.
-    let targetRotation = 0;
+    // True pendulum: the heavy side of the wheel falls toward the bottom of the screen.
+    // Torque proportional to the angular error, damped — with real mass the tree turns
+    // fully heavy-side-down (however far that is); when balanced it eases back upright.
     const massRadius = Math.hypot(this.massX, this.massY);
     if (gravity > 0.01 && this.mass > 0.02 && massRadius > 24) {
-      const heavyAngle = Math.atan2(this.massY, this.massX);
-      const towardDown = wrapAngle(Math.PI / 2 - heavyAngle);
-      targetRotation = clamp(
-        towardDown * 0.3 * this.mass * gravity,
-        -0.5 * gravity,
-        0.5 * gravity
-      );
+      const heavyScreenAngle = Math.atan2(this.massY, this.massX) + this.rotation;
+      const error = wrapAngle(heavyScreenAngle - Math.PI / 2);
+      const torque = -error * 1.6 * this.mass * gravity;
+      this.rotationVel += (torque - this.rotationVel * 2.2) * dt;
+    } else {
+      this.rotationVel += (wrapAngle(-this.rotation) * 1.1 - this.rotationVel * 2.4) * dt;
     }
-    this.rotationVel += ((targetRotation - this.rotation) * 2.1 - this.rotationVel * 2.4) * dt;
     this.rotation += this.rotationVel * dt;
 
     // Pull: pan a fraction toward the (rotated) center of mass so the action gravitates
