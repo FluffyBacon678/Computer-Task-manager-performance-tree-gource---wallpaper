@@ -247,10 +247,21 @@ async function collectTelemetry() {
       });
   }
 
+  // si.graphics() utilization is often null outside NVIDIA. Fall back to the GPU engine
+  // performance counters (sum of per-PID max-engine utilization — approximate but real),
+  // so the GPU branch stays live on AMD/Intel machines too.
+  let counterGpu = null;
+  const { gpuByPid } = processCounterSampler.sample();
+  if (gpuByPid.size > 0) {
+    let sum = 0;
+    for (const value of gpuByPid.values()) sum += value;
+    counterGpu = clamp(sum / 100);
+  }
+
   return {
     cpu,
     ram,
-    gpu: slowMetricsCache.gpu,
+    gpu: slowMetricsCache.gpu ?? counterGpu,
     disk,
     netDown: normalizeBytesPerSecond(network.rx, 60 * 1024 * 1024),
     netUp: normalizeBytesPerSecond(network.tx, 25 * 1024 * 1024),

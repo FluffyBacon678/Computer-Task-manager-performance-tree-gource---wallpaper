@@ -336,10 +336,13 @@ export class GraphModel {
     return true;
   }
 
-  // Stable global membership for the visible process set. Rank by score, keep incumbents
-  // within a grace band so the set only changes when rankings shift a lot — that is what
-  // makes idle/low processes "disappear only when things get cluttered".
-  selectTopProcesses(processes, limit) {
+  // Stable, branch-aware membership for the visible process set. Rank by score and fill
+  // the limit walking down the whole feed, skipping processes whose home branch is
+  // already at its cap — so a RAM-heavy mix doesn't burn the ball budget on processes
+  // the cap then drops, and deeper-ranked processes from quieter branches get shown.
+  // Incumbents within a grace band keep their spot so the set only changes when
+  // rankings shift a lot (anti-flicker).
+  selectProcessesByBranch(processes, limit, enabledBranches, perBranchCap) {
     const sorted = processes
       .filter((process) => process && process.score > PROCESS_FLOOR)
       .sort((a, b) => b.score - a.score);
@@ -348,25 +351,37 @@ export class GraphModel {
     sorted.forEach((process, rank) => rankByPid.set(process.pid, rank));
     const grace = limit + 6;
 
-    const result = [];
+    const selected = [];
     const chosen = new Set();
+    const homeByPid = new Map();
+    const pidsByBranch = new Map();
+
+    const tryTake = (process) => {
+      if (selected.length >= limit || chosen.has(process.pid)) return;
+      const home = this.homeBranch(process, enabledBranches);
+      let list = pidsByBranch.get(home);
+      if (!list) {
+        list = [];
+        pidsByBranch.set(home, list);
+      }
+      if (list.length >= perBranchCap) return;
+      list.push(process.pid);
+      homeByPid.set(process.pid, home);
+      chosen.add(process.pid);
+      selected.push(process);
+    };
+
     for (const process of sorted) {
-      if (result.length >= limit) break;
       if (this.visibleProcessPids.has(process.pid) && rankByPid.get(process.pid) < grace) {
-        result.push(process);
-        chosen.add(process.pid);
+        tryTake(process);
       }
     }
     for (const process of sorted) {
-      if (result.length >= limit) break;
-      if (!chosen.has(process.pid)) {
-        result.push(process);
-        chosen.add(process.pid);
-      }
+      tryTake(process);
     }
 
     this.visibleProcessPids = chosen;
-    return result;
+    return { selected, homeByPid, pidsByBranch };
   }
 
   // The branch a process is busiest on (weighted), with hysteresis so a ball does not hop
@@ -425,21 +440,16 @@ export class GraphModel {
 
     // One node per process under its busiest branch (option B). The single ring shows the
     // dominant metric; the label still carries the full cpu/ram/gpu/disk breakdown.
-    const selected = this.selectTopProcesses(processes, maxProcesses);
-    // Cap processes per branch so no single resource (usually RAM, which most processes are
-    // "busiest" on) hogs the layout and runs its labels off-screen. `selected` is
-    // score-ordered, so each branch keeps its heaviest few and drops the overflow.
+    // The per-branch cap stops one resource (usually RAM) from hogging the layout and
+    // running its labels off-screen; selection skips capped branches so the budget is
+    // spent on branches that still have room.
     const perBranchCap = config.lowPerformanceMode ? 5 : 8;
-    const homeByPid = new Map();
-    const pidsByBranch = new Map();
-    for (const process of selected) {
-      const home = this.homeBranch(process, enabledBranches);
-      if (!pidsByBranch.has(home)) pidsByBranch.set(home, []);
-      const list = pidsByBranch.get(home);
-      if (list.length >= perBranchCap) continue;
-      list.push(process.pid);
-      homeByPid.set(process.pid, home);
-    }
+    const { selected, homeByPid, pidsByBranch } = this.selectProcessesByBranch(
+      processes,
+      maxProcesses,
+      enabledBranches,
+      perBranchCap
+    );
     this.processHome = homeByPid;
 
     const slotMaps = new Map();
@@ -483,6 +493,7 @@ export class GraphModel {
         kind: 'drive',
         metric: 'used',
         value: drive.used,
+        stats: drive,
         rank: driveRank,
         angleOffset: -0.28 + index * 0.18,
         distance: 106
@@ -626,6 +637,11 @@ export class GraphModel {
     const bass = activityState.value('audioBass');
     const ram = activityState.value('ram');
     const flareDecay = Math.exp(-dt / 0.8);
+    // Caption strings tick a few times a second, not every frame: each text change makes
+    // Pixi re-rasterize that label's texture, so per-frame percentage strings are churn.
+    this.captionTimer = (this.captionTimer ?? 0) - dt;
+    const refreshCaptions = this.captionTimer <= 0;
+    if (refreshCaptions) this.captionTimer = 0.22;
 
     for (const node of this.nodes) {
       if (node.type === 'root') {
@@ -635,8 +651,10 @@ export class GraphModel {
         node.targetRadius = lerp(18, 31, clamp(bass * 0.8 + overall * 0.4));
         node.visibleFactor = 1;
         node.glowBoost = 1;
-        node.caption = 'PC CORE';
-        node.captionDetail = `LOAD ${formatPercent(overall)}`;
+        if (refreshCaptions) {
+          node.caption = 'PC CORE';
+          node.captionDetail = `LOAD ${formatPercent(overall)}`;
+        }
         continue;
       }
 
@@ -652,8 +670,10 @@ export class GraphModel {
         node.targetRadius = lerp(9.5, 16.5, categoryActivity);
         node.visibleFactor = 1;
         node.glowBoost = 1;
-        node.caption = node.label;
-        node.captionDetail = `${metricLabel(node.category)} ${formatPercent(categoryActivity)}`;
+        if (refreshCaptions) {
+          node.caption = node.label;
+          node.captionDetail = `${metricLabel(node.category)} ${formatPercent(categoryActivity)}`;
+        }
       } else if (node.type === 'live') {
         const isProcess = node.liveKind === 'process';
         const value = clamp(node.telemetryValue ?? categoryActivity);
@@ -682,10 +702,12 @@ export class GraphModel {
         node.visibleFactor = isProcess
           ? clamp(0.5 + node.activity * 1.05)
           : clamp(0.34 + node.activity * 1.2);
-        node.caption = node.label;
-        node.captionDetail = isProcess
-          ? processCaptionDetail(node.liveStats ?? {}, node.telemetryMetric)
-          : `${metricLabel(node.telemetryMetric)} ${formatPercent(value)}`;
+        if (refreshCaptions) {
+          node.caption = node.label;
+          node.captionDetail = isProcess
+            ? processCaptionDetail(node.liveStats ?? {}, node.telemetryMetric)
+            : `${metricLabel(node.telemetryMetric)} ${formatPercent(value)}`;
+        }
 
         if (node.liveKind === 'drive') {
           node.targetRadius = lerp(6, 13.5, visualValue);
@@ -704,8 +726,10 @@ export class GraphModel {
         node.targetRadius = lerp(3, 6.4, categoryActivity) * base;
         node.visibleFactor = node.category === 'ram' ? clamp(base * 1.25) : 0.62;
         node.glowBoost = 0.55;
-        node.caption = node.label;
-        node.captionDetail = `${metricLabel(nodeMetric)} ${formatPercent(node.value)}`;
+        if (refreshCaptions) {
+          node.caption = node.label;
+          node.captionDetail = `${metricLabel(nodeMetric)} ${formatPercent(node.value)}`;
+        }
       }
     }
 

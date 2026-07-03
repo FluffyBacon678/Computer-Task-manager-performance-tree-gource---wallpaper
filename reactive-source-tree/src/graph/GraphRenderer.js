@@ -1,4 +1,4 @@
-import { Graphics } from 'pixi.js';
+import { BLEND_MODES, Graphics } from 'pixi.js';
 import { clamp, lerp } from '../utils/MathUtils.js';
 import { LinkVisual } from './LinkVisual.js';
 import { NodeVisual } from './NodeVisual.js';
@@ -11,6 +11,10 @@ export class GraphRenderer {
     this.palette = palette;
 
     this.linkGraphics = new Graphics();
+    // Links are pure glow strokes, so they blend additively (overlaps brighten instead of
+    // occluding). Node graphics stay on normal blending: the gauges draw dark backing
+    // rings that ADD would erase.
+    this.linkGraphics.blendMode = BLEND_MODES.ADD;
     this.nodeGraphics = new Graphics();
     this.layers.graphLineLayer.addChild(this.linkGraphics);
     this.layers.nodeLayer.addChild(this.nodeGraphics);
@@ -45,9 +49,10 @@ export class GraphRenderer {
     this.glowField.begin();
 
     const glowStrength = config.lowPerformanceMode ? config.glowStrength * 0.42 : config.glowStrength;
+    const quality = config.qualityScale ?? 1;
     for (const link of model.links) {
       if ((link.source.visibleFactor ?? 1) <= 0.04 || (link.target.visibleFactor ?? 1) <= 0.04) continue;
-      this.linkVisual.draw(link, time, glowStrength, config.lowPerformanceMode);
+      this.linkVisual.draw(link, time, glowStrength, config.lowPerformanceMode, quality);
     }
 
     for (const node of model.nodes) {

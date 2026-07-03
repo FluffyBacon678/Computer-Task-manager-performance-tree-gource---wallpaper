@@ -16,6 +16,18 @@ function pct(value) {
   return `${Math.round(p)}%`;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
 // Expanded, readable card shown for the hovered/focused node.
 function detailCaption(node) {
   if (node.liveKind === 'process' && node.liveStats) {
@@ -30,6 +42,16 @@ function detailCaption(node) {
     ];
     if (meta.length) lines.push(meta.join(' · '));
     return lines.join('\n');
+  }
+  if (node.liveKind === 'drive' && node.liveStats) {
+    const s = node.liveStats;
+    const used = formatBytes(s.usedBytes);
+    const size = formatBytes(s.sizeBytes);
+    return [
+      node.label,
+      used && size ? `${used} / ${size} (${pct(s.used)})` : `USED ${pct(s.used)}`,
+      `ACTIVITY ${pct(s.activity)}`
+    ].join('\n');
   }
   return captionText(node);
 }

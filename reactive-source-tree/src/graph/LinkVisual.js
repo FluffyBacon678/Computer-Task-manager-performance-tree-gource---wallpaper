@@ -3,7 +3,7 @@ export class LinkVisual {
     this.graphics = graphics;
   }
 
-  draw(link, time, glowStrength, lowPerformanceMode) {
+  draw(link, time, glowStrength, lowPerformanceMode, quality = 1) {
     const source = link.source;
     const target = link.target;
     const sx = source.renderX;
@@ -23,7 +23,9 @@ export class LinkVisual {
     const width = (link.secondary ? 0.65 : 1.15) + activity * (link.secondary ? 0.8 : 1.5);
     const color = link.color;
 
-    if (!lowPerformanceMode) {
+    // Each pass is a CPU-tessellated curve, so the halo and mid glow strokes shed first
+    // when adaptive quality drops — the crisp core line always survives.
+    if (!lowPerformanceMode && quality >= 0.75) {
       this.graphics.lineStyle({
         width: width * 5.2,
         color,
@@ -35,15 +37,17 @@ export class LinkVisual {
       this.graphics.quadraticCurveTo(cx, cy, tx, ty);
     }
 
-    this.graphics.lineStyle({
-      width: width * 2.1,
-      color,
-      alpha: alpha * 0.22 * glowStrength,
-      cap: 'round',
-      join: 'round'
-    });
-    this.graphics.moveTo(sx, sy);
-    this.graphics.quadraticCurveTo(cx, cy, tx, ty);
+    if (quality >= 0.55) {
+      this.graphics.lineStyle({
+        width: width * 2.1,
+        color,
+        alpha: alpha * 0.22 * glowStrength,
+        cap: 'round',
+        join: 'round'
+      });
+      this.graphics.moveTo(sx, sy);
+      this.graphics.quadraticCurveTo(cx, cy, tx, ty);
+    }
 
     this.graphics.lineStyle({
       width,
