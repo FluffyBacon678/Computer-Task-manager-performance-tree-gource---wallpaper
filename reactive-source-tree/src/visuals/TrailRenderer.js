@@ -12,8 +12,12 @@ export class TrailRenderer {
   constructor(renderer, source, width, height) {
     this.renderer = renderer;
     this.source = source;
-    this.textureA = RenderTexture.create({ width, height });
-    this.textureB = RenderTexture.create({ width, height });
+    // A hidden/minimized window can report 0x0 at load; a zero-sized framebuffer throws.
+    // Start at 1x1 in that case — the resize handler fixes it once real dimensions exist.
+    const w = Math.max(1, width);
+    const h = Math.max(1, height);
+    this.textureA = RenderTexture.create({ width: w, height: h });
+    this.textureB = RenderTexture.create({ width: w, height: h });
     this.fadeSprite = new Sprite(this.textureA);
     // The on-stage composite. Sources are pure additive light, so ADD is exact.
     this.sprite = new Sprite(this.textureA);
@@ -21,8 +25,8 @@ export class TrailRenderer {
   }
 
   resize(width, height) {
-    this.textureA.resize(width, height);
-    this.textureB.resize(width, height);
+    this.textureA.resize(Math.max(1, width), Math.max(1, height));
+    this.textureB.resize(Math.max(1, width), Math.max(1, height));
   }
 
   // persistence = seconds for a trail to fade to ~37%. Framerate independent.
