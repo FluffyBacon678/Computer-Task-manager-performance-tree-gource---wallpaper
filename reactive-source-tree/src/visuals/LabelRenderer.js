@@ -120,7 +120,7 @@ export class LabelRenderer {
     }
   }
 
-  update(nodes, config, dt = 0.016) {
+  update(nodes, config, dt = 0.016, worldRotation = 0) {
     const wanted = new Set();
     this.container.visible = true;
     this.candidates.length = 0;
@@ -167,6 +167,9 @@ export class LabelRenderer {
       label.x = node.renderX + horizontal * outward;
       label.y = node.renderY + vertical * outward;
       label.anchor.set(anchorX, anchorY);
+      // Counter-rotate against the camera's gravity lean so text stays upright while
+      // its position swings with the tree.
+      label.rotation = -worldRotation;
       const baseScale = node.type === 'root' ? 1.05 : node.type === 'category' ? 0.98 : node.type === 'live' ? 0.9 : 0.78;
       // Store the target alpha; the actual alpha is driven by the declutter fade below.
       label.baseAlpha = focused

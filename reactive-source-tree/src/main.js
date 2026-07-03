@@ -242,8 +242,14 @@ app.ticker.add(() => {
 
   pointerInput.update(rawDt);
   const cameraScale = cameraController.scale || 1;
-  const pointerWorldX = (pointerInput.x - cameraController.x) / cameraScale;
-  const pointerWorldY = (pointerInput.y - cameraController.y) / cameraScale;
+  // Screen -> world: undo the camera translation, then the gravity lean rotation,
+  // then the scale (inverse of the container transform).
+  const camRelX = pointerInput.x - cameraController.x;
+  const camRelY = pointerInput.y - cameraController.y;
+  const camCos = Math.cos(cameraController.rotation || 0);
+  const camSin = Math.sin(cameraController.rotation || 0);
+  const pointerWorldX = (camRelX * camCos + camRelY * camSin) / cameraScale;
+  const pointerWorldY = (-camRelX * camSin + camRelY * camCos) / cameraScale;
   const pointerActive = pointerInput.influence > 0.01 && config.mouseInteraction !== 'off';
   hoverController.update(
     graphModel,
@@ -264,7 +270,7 @@ app.ticker.add(() => {
   graphLayout.pointer.focusRadius = 150;
 
   graphLayout.step(config.lowPerformanceMode ? 1 : 2);
-  cameraController.update(activityState, config, time, rawDt);
+  cameraController.update(activityState, config, time, rawDt, graphModel);
 
   backgroundRenderer.render(activityState, config, time);
   edgeParticleSystem.update(graphModel, activityState, config, dt);
@@ -274,7 +280,7 @@ app.ticker.add(() => {
   beamSystem.update(graphModel, config, dt);
   sparkleSystem.update(graphModel, activityState, config, dt);
 
-  graphRenderer.render(graphModel, activityState, config, time, rawDt);
+  graphRenderer.render(graphModel, activityState, config, time, rawDt, cameraController.rotation);
   edgeParticleSystem.render(time, config);
   particleSystem.render(config);
   pulseSystem.render(config);

@@ -218,6 +218,14 @@
         "text": "Motion Trails",
         "type": "bool",
         "value": true
+      },
+      "gravity_strength": {
+        "text": "Gravity (lean toward load)",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
       }
     }
   }

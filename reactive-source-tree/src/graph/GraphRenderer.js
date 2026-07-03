@@ -41,7 +41,7 @@ export class GraphRenderer {
     }
   }
 
-  render(model, activityState, config, time, dt) {
+  render(model, activityState, config, time, dt, worldRotation = 0) {
     this.updateVisualInterpolation(model, dt);
 
     this.linkGraphics.clear();
@@ -72,6 +72,6 @@ export class GraphRenderer {
     }
 
     this.glowField.end();
-    this.labelRenderer.update(model.nodes, config, dt);
+    this.labelRenderer.update(model.nodes, config, dt, worldRotation);
   }
 }

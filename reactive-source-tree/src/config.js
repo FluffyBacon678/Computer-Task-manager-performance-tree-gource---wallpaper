@@ -28,7 +28,8 @@ export const DEFAULT_CONFIG = {
   qualityScale: 1,
   bloom: false,
   bloomStrength: 1,
-  trails: true
+  trails: true,
+  gravityStrength: 1
 };
 
 export const ACTIVITY_KEYS = [

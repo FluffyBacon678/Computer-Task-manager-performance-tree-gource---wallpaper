@@ -81,6 +81,7 @@ export class WallpaperProperties {
     c.bloom = toBool(propertyValue(properties.bloom, c.bloom), c.bloom);
     c.bloomStrength = clamp(Number(propertyValue(properties.bloom_strength, c.bloomStrength)), 0, 2);
     c.trails = toBool(propertyValue(properties.trails, c.trails), c.trails);
+    c.gravityStrength = clamp(Number(propertyValue(properties.gravity_strength, c.gravityStrength)), 0, 2);
 
     const paletteMode = propertyValue(properties.palette_mode, c.paletteMode);
     if (typeof paletteMode === 'string') c.paletteMode = paletteMode;
