@@ -31,6 +31,30 @@ export class EdgeParticleSystem {
     this.pool = new ParticlePool(maxParticles);
     this.field = new SpriteField(parent, 1024);
     this.accumulators = new Map();
+    // Primary links bucketed by category, rebuilt only when the topology changes
+    // (clearDynamicNodes swaps the links array; addLink grows it) instead of six
+    // filter passes over every link per frame.
+    this.linkCache = new Map();
+    this.cachedLinksRef = null;
+    this.cachedLinkCount = -1;
+  }
+
+  linksFor(model, category) {
+    if (this.cachedLinksRef !== model.links || this.cachedLinkCount !== model.links.length) {
+      this.cachedLinksRef = model.links;
+      this.cachedLinkCount = model.links.length;
+      this.linkCache.clear();
+      for (const link of model.links) {
+        if (link.secondary) continue;
+        let list = this.linkCache.get(link.category);
+        if (!list) {
+          list = [];
+          this.linkCache.set(link.category, list);
+        }
+        list.push(link);
+      }
+    }
+    return this.linkCache.get(category);
   }
 
   setPalette(palette) {
@@ -70,8 +94,8 @@ export class EdgeParticleSystem {
   spawnCategory(model, category, activityState, config, dt, rateMultiplier = 1) {
     const activity = this.activityFor(category, activityState) * config.intensity;
     const displayCategory = category.startsWith('network') ? 'network' : category;
-    const links = model.links.filter((link) => link.category === displayCategory && !link.secondary);
-    if (!links.length) return;
+    const links = this.linksFor(model, displayCategory);
+    if (!links || !links.length) return;
 
     const rate = rateMultiplier * (config.lowPerformanceMode ? 3.2 : 7.5) * config.particleAmount * (0.1 + activity * 1.8);
     const key = category;

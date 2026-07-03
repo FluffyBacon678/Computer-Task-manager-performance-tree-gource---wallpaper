@@ -52,11 +52,9 @@ const pulseLayer = new Container();
 const nodeLayer = new Container();
 const uiLayer = new Container();
 
-graphLineLayer.blendMode = BLEND_MODES.ADD;
-glowLayer.blendMode = BLEND_MODES.ADD;
-particleLayer.blendMode = BLEND_MODES.ADD;
-pulseLayer.blendMode = BLEND_MODES.ADD;
-nodeLayer.blendMode = BLEND_MODES.ADD;
+// Pixi v7 Containers have no blendMode — additive blending must be set on each rendered
+// object (the SpriteField sprites do it themselves; Graphics set it where they're created).
+// Node gauges stay on normal blending: their dark backing rings would vanish under ADD.
 
 worldLayer.addChild(graphLineLayer, glowLayer, particleLayer, pulseLayer, nodeLayer, uiLayer);
 app.stage.addChild(backgroundLayer, worldLayer);
@@ -130,6 +128,7 @@ function applyBloom() {
 }
 
 const cursorGraphics = new Graphics();
+cursorGraphics.blendMode = BLEND_MODES.ADD;
 glowLayer.addChild(cursorGraphics);
 
 new ResizeHandler(app, (width, height) => {

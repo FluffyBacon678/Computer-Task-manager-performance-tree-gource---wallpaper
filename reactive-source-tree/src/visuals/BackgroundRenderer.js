@@ -54,22 +54,34 @@ export class BackgroundRenderer {
     g.drawRect(0, 0, width, height);
     g.endFill();
 
-    for (let i = 7; i >= 1; i -= 1) {
-      const t = i / 7;
-      const radius = maxRadius * t * (0.62 + bass * 0.06);
-      const alpha = (0.035 + load * 0.026 + gpu * 0.015) * (1 - t * 0.56);
-      g.beginFill(this.palette.colors.backgroundB, alpha);
-      g.drawCircle(cx, cy, radius);
-      g.endFill();
-    }
+    this.dustField.begin();
+
+    // The big soft washes (center halo, core mist, GPU blobs) are baked-gradient sprites
+    // like the dust, not per-frame Graphics circles: the old stepped ring stack
+    // re-tessellated ~13 screen-sized circles every frame and banded visibly. Alphas are
+    // scaled up to match the old stacked/flat fills at the center.
+    const haloAlpha = 0.18 + load * 0.13 + gpu * 0.07;
+    this.dustField.draw(cx, cy, maxRadius * (0.8 + bass * 0.08), this.palette.colors.backgroundB, haloAlpha);
 
     const coreMist = 0.02 + load * 0.035 + bass * 0.04;
-    g.beginFill(this.palette.colors.coreAccent, coreMist);
-    g.drawCircle(cx, cy, maxRadius * 0.32);
-    g.endFill();
+    this.dustField.draw(cx, cy, maxRadius * 0.45, this.palette.colors.coreAccent, coreMist * 1.6);
+
+    if (!config.lowPerformanceMode) {
+      for (let i = 0; i < 5; i += 1) {
+        const n = this.noise(time * 0.02 + i, i * 8.4);
+        const x = lerp(width * 0.2, width * 0.8, n);
+        const y = lerp(height * 0.18, height * 0.82, this.noise(i * 3.1, time * 0.02));
+        this.dustField.draw(
+          x,
+          y,
+          maxRadius * (0.23 + i * 0.033),
+          this.palette.category('gpu', gpu),
+          (0.024 + gpu * 0.028) * config.glowStrength
+        );
+      }
+    }
 
     const dustLimit = config.lowPerformanceMode ? 72 : this.dust.length;
-    this.dustField.begin();
     for (let i = 0; i < dustLimit; i += 1) {
       const dust = this.dust[i];
       const driftX = this.noise(dust.x * 5 + time * 0.012, dust.phase) - 0.5;
@@ -81,16 +93,5 @@ export class BackgroundRenderer {
       this.dustField.draw(x, y, size * 2.4, this.palette.colors.dust, dust.alpha * shimmer * (0.36 + load * 0.4));
     }
     this.dustField.end();
-
-    if (!config.lowPerformanceMode) {
-      for (let i = 0; i < 5; i += 1) {
-        const n = this.noise(time * 0.02 + i, i * 8.4);
-        const x = lerp(width * 0.2, width * 0.8, n);
-        const y = lerp(height * 0.18, height * 0.82, this.noise(i * 3.1, time * 0.02));
-        g.beginFill(this.palette.category('gpu', gpu), (0.012 + gpu * 0.014) * config.glowStrength);
-        g.drawCircle(x, y, maxRadius * (0.18 + i * 0.025));
-        g.endFill();
-      }
-    }
   }
 }

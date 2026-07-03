@@ -1,4 +1,4 @@
-import { Graphics } from 'pixi.js';
+import { BLEND_MODES, Graphics } from 'pixi.js';
 import { clamp, lerp } from '../utils/MathUtils.js';
 
 class Pulse {
@@ -20,6 +20,8 @@ export class PulseSystem {
   constructor(parent, palette, maxPulses = 70) {
     this.palette = palette;
     this.graphics = new Graphics();
+    // Pulse rings are pure light — additive so overlapping shockwaves brighten.
+    this.graphics.blendMode = BLEND_MODES.ADD;
     parent.addChild(this.graphics);
     this.pulses = Array.from({ length: maxPulses }, () => new Pulse());
     this.previous = {
