@@ -8,6 +8,8 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5173
+    // Honor an assigned port (e.g. from the preview tool) so the dev server doesn't collide
+    // with other Vite servers already on 5173.
+    port: Number(process.env.PORT) || 5173
   }
 });
