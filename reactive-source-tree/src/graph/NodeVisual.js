@@ -21,6 +21,7 @@ export class NodeVisual {
     const visible = node.visibleFactor ?? 1;
     const flare = node.flare ?? 0;
     const focus = node.focus ?? 0;
+    const grab = node.grab ?? 0;
 
     // Lifecycle envelope: bloom in on birth, shrink + fade on death.
     let lifeScale = 1;
@@ -48,8 +49,8 @@ export class NodeVisual {
     const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
       ? (1 - (time - node.birthTime) / 0.3) * 0.5
       : 0;
-    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9));
-    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4) * visible * lifeAlpha;
+    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9 + grab * 0.22));
+    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4 + grab * 0.18) * visible * lifeAlpha;
     // Soft halo → one batched GPU sprite (smooth gradient, GPU fill); crisp core → Graphics.
     const haloMul = (config.lowPerformanceMode ? 0.55 : 1) * config.glowStrength;
     const haloAlpha = Math.min(1, alpha * (0.3 + 0.45 * haloMul) * (node.type === 'root' ? 1.5 : boost));
@@ -62,6 +63,13 @@ export class NodeVisual {
     if (focus > 0.06) {
       this.graphics.lineStyle(1.3, 0xffffff, 0.5 * focus);
       this.graphics.drawCircle(node.renderX, node.renderY, radius + 6 + focus * 4);
+    }
+
+    if (grab > 0.04) {
+      this.graphics.lineStyle(1.1, 0xffffff, 0.42 * grab * lifeAlpha);
+      this.graphics.drawCircle(node.renderX, node.renderY, radius + 11 + Math.sin(time * 8) * 1.5);
+      this.graphics.lineStyle(0.8, node.color, 0.56 * grab * lifeAlpha);
+      this.graphics.drawCircle(node.renderX, node.renderY, radius + 17);
     }
 
     if (node.type === 'root') {

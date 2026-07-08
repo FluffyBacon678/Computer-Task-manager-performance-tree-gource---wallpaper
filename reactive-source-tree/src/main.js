@@ -256,7 +256,8 @@ app.ticker.add(() => {
     pointerWorldX,
     pointerWorldY,
     pointerActive && config.mouseInteraction === 'focus',
-    rawDt
+    rawDt,
+    pointerInput
   );
   graphLayout.setPointer(
     pointerWorldX,
@@ -292,12 +293,20 @@ app.ticker.add(() => {
 
   cursorGraphics.clear();
   if (pointerActive) {
-    const cursorColor = config.mouseInteraction === 'repel' ? palette.colors.audio : palette.colors.coreAccent;
+    const cursorColor = graphModel.draggedId
+      ? palette.colors.core
+      : config.mouseInteraction === 'repel'
+        ? palette.colors.audio
+        : palette.colors.coreAccent;
     const cursorAlpha = pointerInput.influence;
     cursorGraphics.lineStyle(1.4, cursorColor, 0.42 * cursorAlpha);
     cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 15 + Math.sin(time * 4) * 3);
     cursorGraphics.lineStyle(0.7, cursorColor, 0.18 * cursorAlpha);
     cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 28);
+    if (graphModel.draggedId) {
+      cursorGraphics.lineStyle(1, cursorColor, 0.52 * cursorAlpha);
+      cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 42);
+    }
   }
 
   performanceMonitor.update(rawDt);
@@ -313,8 +322,9 @@ app.ticker.add(() => {
     telemetryStatus: telemetryInput.status
   });
   updateDebugOverlay(rawDt);
+  pointerInput.endFrame();
 });
 
 // Debug handle: lets devtools (and the hidden-tab preview, where rAF is paused) inspect
 // state and pump frames manually via __rst.app.ticker.update(t).
-window.__rst = { app, config, activityState, graphModel, performanceMonitor, telemetryInput };
+window.__rst = { app, config, activityState, graphModel, graphLayout, hoverController, performanceMonitor, telemetryInput };

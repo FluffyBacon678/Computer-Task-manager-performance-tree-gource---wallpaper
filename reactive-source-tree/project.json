@@ -2,7 +2,7 @@
   "title": "Reactive Source Tree",
   "description": "A neon, audio-reactive source-tree system constellation for Wallpaper Engine.",
   "file": "index.html",
-  "preview": "preview.png",
+  "preview": "preview.jpg",
   "general": {
     "properties": {
       "intensity": {

@@ -35,11 +35,13 @@ function detailCaption(node) {
     const meta = [];
     if (Number.isFinite(s.pid)) meta.push(`PID ${s.pid}`);
     if (Number.isFinite(s.threads) && s.threads > 0) meta.push(`${s.threads} threads`);
+    const home = node.telemetryMetric ? `${String(node.telemetryMetric).toUpperCase()} NODE ${pct(node.value)}` : null;
     const lines = [
       node.label,
+      home,
       `CPU ${pct(s.cpu)}   RAM ${pct(s.ram)}`,
       `GPU ${pct(s.gpu)}   DISK ${pct(s.disk)}`
-    ];
+    ].filter(Boolean);
     if (meta.length) lines.push(meta.join(' · '));
     return lines.join('\n');
   }
@@ -58,7 +60,9 @@ function detailCaption(node) {
 
 function shouldShowLabel(node, config) {
   if (!config.showLabels) return false;
-  if (node.visibleFactor <= 0.22) return false;
+  const focused = (node.focus ?? 0) > 0.08 || (node.grab ?? 0) > 0.04;
+  if (node.visibleFactor <= 0.22 && !focused) return false;
+  if (focused) return true;
   if (node.type === 'root' || node.type === 'category' || node.type === 'live') return true;
   if (config.lowPerformanceMode) return false;
   return config.showLabels && config.showSystemLeafLabels;
@@ -156,7 +160,7 @@ export class LabelRenderer {
       const anchorY = vertical < -0.25 ? 1 : vertical > 0.25 ? 0 : 0.5;
       const activityAlpha = clamp(0.48 + node.activity * 0.46);
 
-      const focus = node.focus ?? 0;
+      const focus = Math.max(node.focus ?? 0, node.grab ?? 0);
       const focused = focus > 0.4;
 
       const nextText = focused ? detailCaption(node) : captionText(node);
