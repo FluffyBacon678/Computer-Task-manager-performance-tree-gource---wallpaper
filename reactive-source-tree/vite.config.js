@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { defineConfig } from 'vite';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
 // Dev-only screenshot bridge: POST a canvas dataURL to /__shot and it lands in
 // .dev-shots/ as a JPEG. The wallpaper runs in a hidden preview tab where rAF is paused
@@ -39,7 +40,14 @@ const shotBridge = {
 
 export default defineConfig({
   base: './',
-  plugins: [shotBridge],
+  // viteSingleFile inlines all JS/CSS into index.html so the built wallpaper is a single
+  // self-contained file with ZERO external fetches. Wallpaper Engine loads wallpapers from
+  // the local filesystem (file://, null origin), where an external `type="module"` script
+  // cannot load (module scripts require CORS; file:// has no origin) — that produced a
+  // black screen in WE while http:// (the dev server / a browser) worked fine. Inlining
+  // sidesteps it entirely: an inline module executes with no cross-origin fetch. It also
+  // folds the lazy bloom dynamic-import chunk into the one file (inlineDynamicImports).
+  plugins: [shotBridge, viteSingleFile()],
   build: {
     outDir: 'dist',
     emptyOutDir: true
