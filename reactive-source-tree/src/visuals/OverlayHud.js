@@ -43,7 +43,7 @@ export class OverlayHud {
     this.buildLegend(palette);
   }
 
-  update(activityState, config, dt) {
+  update(activityState, config, dt, model = null) {
     if (!this.el) return;
     const show = config.showHud;
     this.el.style.display = show ? 'block' : 'none';
@@ -63,7 +63,10 @@ export class OverlayHud {
       }
     }
     if (this.loadEl) {
-      this.loadEl.textContent = `LOAD ${Math.round(activityState.value('overallLoad') * 100)}%`;
+      // The process tree has no core node to carry the count, so it lives here instead.
+      const processCount = model?.dynamicNodeIds?.size ?? 0;
+      const suffix = model?.autoFit && processCount ? `   ${processCount} PROC` : '';
+      this.loadEl.textContent = `LOAD ${Math.round(activityState.value('overallLoad') * 100)}%${suffix}`;
     }
 
     if (this.valueEls) {

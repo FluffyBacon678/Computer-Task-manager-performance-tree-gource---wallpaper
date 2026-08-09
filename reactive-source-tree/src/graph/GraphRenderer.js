@@ -43,7 +43,7 @@ export class GraphRenderer {
     }
   }
 
-  render(model, activityState, config, time, dt, worldRotation = 0) {
+  render(model, activityState, config, time, dt, worldRotation = 0, worldScale = 1) {
     this.updateVisualInterpolation(model, dt);
 
     this.linkGraphics.clear();
@@ -78,6 +78,9 @@ export class GraphRenderer {
     }
 
     this.glowField.end();
-    this.labelRenderer.update(model.nodes, config, dt, worldRotation);
+    // Labels counter-scale against the camera only when the model drives its own zoom
+    // (the process tree's auto-fit); the resource view's zoom is stable and keeps its
+    // hand-tuned label sizing.
+    this.labelRenderer.update(model.nodes, config, dt, worldRotation, model.autoFit ? worldScale : 1);
   }
 }

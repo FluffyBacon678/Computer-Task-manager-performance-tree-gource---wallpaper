@@ -127,7 +127,12 @@ export class LabelRenderer {
     }
   }
 
-  update(nodes, config, dt = 0.016, worldRotation = 0) {
+  update(nodes, config, dt = 0.016, worldRotation = 0, worldScale = 1) {
+    // Labels live inside the camera-scaled world, so a zoomed-out view would shrink the
+    // text below readability. Counter-scaling keeps captions at a constant SCREEN size
+    // no matter how far the camera pulls back to fit a deep tree; the declutter pass
+    // then simply shows fewer of them rather than a field of unreadable specks.
+    const zoomComp = 1 / Math.max(0.35, Math.min(1.2, worldScale));
     const wanted = new Set();
     this.container.visible = true;
     this.candidates.length = 0;
@@ -184,7 +189,7 @@ export class LabelRenderer {
         : node.type === 'leaf'
           ? clamp(0.32 + node.activity * 0.46) * node.visibleFactor
           : activityAlpha * node.visibleFactor;
-      label.scale.set(baseScale * (1 + focus * 0.9));
+      label.scale.set(baseScale * zoomComp * (1 + focus * 0.9));
 
       if (focused) {
         // Always show the focused card, on top of everything.

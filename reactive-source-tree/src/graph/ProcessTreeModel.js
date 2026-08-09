@@ -47,6 +47,9 @@ export class ProcessTreeModel {
     this.dynamicNodeIds = new Set();
     this.dyingNodes = [];
     this.beamEvents = [];
+    // Queued {x, y, color} for PulseSystem: a process exiting gets a collapsing ring, so
+    // deaths read as events the way spawns do (beam + bloom) instead of quietly fading.
+    this.deathEvents = [];
     this.now = 0;
     this.focusedId = null;
     this.draggedId = null;
@@ -379,12 +382,16 @@ export class ProcessTreeModel {
       }
     }
 
-    // Nodes that vanished this refresh fade out instead of popping.
+    // Nodes that vanished this refresh fade out instead of popping, and mark the spot
+    // with a ring so an exit is as visible as an arrival.
     for (const [id, old] of previous) {
       if (!this.nodeById.has(id)) {
         old.dying = true;
         old.deathTime = this.now;
         this.dyingNodes.push(old);
+        if (this.deathEvents.length < 16) {
+          this.deathEvents.push({ x: old.renderX, y: old.renderY, color: old.color });
+        }
       }
     }
 

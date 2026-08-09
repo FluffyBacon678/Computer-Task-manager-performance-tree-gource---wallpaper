@@ -312,7 +312,7 @@ app.ticker.add(() => {
   beamSystem.update(graphModel, config, dt);
   sparkleSystem.update(graphModel, activityState, config, dt);
 
-  graphRenderer.render(graphModel, activityState, config, time, rawDt, cameraController.rotation);
+  graphRenderer.render(graphModel, activityState, config, time, rawDt, cameraController.rotation, cameraController.scale);
   edgeParticleSystem.render(time, config);
   particleSystem.render(config);
   pulseSystem.render(config);
@@ -320,7 +320,7 @@ app.ticker.add(() => {
   actorSystem.render(config);
   sparkleSystem.render(config);
   if (trailsMounted === 'trails') trailRenderer.update(dt);
-  overlayHud.update(activityState, config, rawDt);
+  overlayHud.update(activityState, config, rawDt, graphModel);
 
   cursorGraphics.clear();
   if (pointerActive) {
