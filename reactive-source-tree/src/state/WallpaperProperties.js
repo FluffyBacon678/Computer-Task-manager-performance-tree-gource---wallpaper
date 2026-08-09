@@ -82,6 +82,10 @@ export class WallpaperProperties {
     c.bloomStrength = clamp(Number(propertyValue(properties.bloom_strength, c.bloomStrength)), 0, 2);
     c.trails = toBool(propertyValue(properties.trails, c.trails), c.trails);
     c.gravityStrength = clamp(Number(propertyValue(properties.gravity_strength, c.gravityStrength)), 0, 2);
+    c.maxTreeNodes = Math.round(clamp(Number(propertyValue(properties.max_tree_nodes, c.maxTreeNodes)), 30, 400));
+
+    const treeMode = propertyValue(properties.tree_mode, c.treeMode);
+    if (typeof treeMode === 'string') c.treeMode = treeMode;
 
     const paletteMode = propertyValue(properties.palette_mode, c.paletteMode);
     if (typeof paletteMode === 'string') c.paletteMode = paletteMode;

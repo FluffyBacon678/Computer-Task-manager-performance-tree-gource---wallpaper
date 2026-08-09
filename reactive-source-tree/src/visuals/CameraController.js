@@ -23,6 +23,32 @@ export class CameraController {
     this.mass = 0;
     this.rotation = 0;
     this.rotationVel = 0;
+    this.contentRadius = 520; // smoothed extent of the constellation, for auto-fit
+  }
+
+  // Radius containing ~90% of the nodes, via a coarse histogram (O(n), no sort). Using a
+  // percentile rather than the max keeps one node flung out by the force sim from
+  // zooming the whole scene out.
+  measureContentRadius(model) {
+    if (!model || !model.nodes.length) return this.contentRadius;
+    const buckets = new Array(48).fill(0);
+    const bucketSize = 60;
+    let counted = 0;
+    for (const node of model.nodes) {
+      if ((node.visibleFactor ?? 1) <= 0.05) continue;
+      const r = Math.hypot(node.x, node.y);
+      const index = Math.min(buckets.length - 1, Math.floor(r / bucketSize));
+      buckets[index] += 1;
+      counted += 1;
+    }
+    if (!counted) return this.contentRadius;
+    const target = counted * 0.9;
+    let running = 0;
+    for (let i = 0; i < buckets.length; i += 1) {
+      running += buckets[i];
+      if (running >= target) return (i + 1) * bucketSize;
+    }
+    return buckets.length * bucketSize;
   }
 
   resize(width, height) {
@@ -60,7 +86,21 @@ export class CameraController {
     const wideCorrection = this.width / this.height > 2.8 ? 1.08 : 1;
     const load = activityState.value('overallLoad') * config.intensity;
     const bass = activityState.value('audioBass');
-    const targetScale = baseScale * wideCorrection * (1 + load * 0.035 + bass * 0.018);
+    // Auto-fit: zoom so the constellation fills the viewport without overflowing. The
+    // process tree's extent varies with how deep the ancestry runs, so a fixed scale
+    // either crops it or leaves it tiny; this tracks the content instead.
+    // Auto-fit is opt-in (model.autoFit): only the process tree needs it, because its
+    // extent is data-driven — how deep the ancestry happens to run. The resource
+    // constellation has a fixed, hand-tuned framing and must not be touched. Shrink-only,
+    // so it can zoom out to fit a deep tree but never zooms in and never crops.
+    let fitScale = 1;
+    if (model?.autoFit) {
+      const measuredRadius = this.measureContentRadius(model);
+      this.contentRadius = lerp(this.contentRadius, measuredRadius, clamp(1 - Math.pow(0.05, dt)));
+      fitScale = clamp(470 / Math.max(470, this.contentRadius), 0.34, 1);
+    }
+
+    const targetScale = baseScale * wideCorrection * fitScale * (1 + load * 0.035 + bass * 0.018);
     const driftAmount = config.cameraDrift ? lerp(3, 18, load) : 0;
     const driftX = (this.noise(time * 0.018, 7) - 0.5) * driftAmount;
     const driftY = (this.noise(4, time * 0.015) - 0.5) * driftAmount;

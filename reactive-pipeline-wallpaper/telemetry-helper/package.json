@@ -1,0 +1,14 @@
+{
+  "name": "reactive-source-tree-telemetry-helper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-only telemetry WebSocket helper for Reactive Source Tree.",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "systeminformation": "^5.23.8",
+    "ws": "^8.18.0"
+  }
+}

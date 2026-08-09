@@ -16,6 +16,8 @@ import { OverlayHud } from './visuals/OverlayHud.js';
 import { ParticleSystem } from './particles/ParticleSystem.js';
 import { PerformanceMonitor } from './utils/PerformanceMonitor.js';
 import { PointerInput } from './state/PointerInput.js';
+import { ProcessTreeLayout } from './graph/ProcessTreeLayout.js';
+import { ProcessTreeModel } from './graph/ProcessTreeModel.js';
 import { PulseSystem } from './particles/PulseSystem.js';
 import { ResizeHandler } from './utils/ResizeHandler.js';
 import { SparkleSystem } from './particles/SparkleSystem.js';
@@ -80,9 +82,36 @@ const layers = {
 const backgroundRenderer = new BackgroundRenderer(backgroundLayer, palette, window.innerWidth, window.innerHeight);
 const cameraController = new CameraController([worldLayer, trailScene, worldOverlay], window.innerWidth, window.innerHeight);
 const trailRenderer = new TrailRenderer(app.renderer, trailScene, window.innerWidth, window.innerHeight);
-const graphModel = new GraphModel(config, palette);
-const graphLayout = new GraphLayout(graphModel, activityState, config);
+// Two tree modes share every renderer: "resources" is the fixed CPU/RAM/GPU/... branch
+// constellation; "processes" is the Gource-style live ancestry tree, where the hierarchy
+// is which process spawned which, and nodes bloom in / fade out as processes start and
+// exit. Both expose the same model surface, so only these two bindings change.
+function makeModel(mode) {
+  return mode === 'processes'
+    ? new ProcessTreeModel(config, palette)
+    : new GraphModel(config, palette);
+}
+
+function makeLayout(model, mode) {
+  return mode === 'processes'
+    ? new ProcessTreeLayout(model, activityState, config)
+    : new GraphLayout(model, activityState, config);
+}
+
+let treeMode = config.treeMode ?? 'resources';
+let graphModel = makeModel(treeMode);
+let graphLayout = makeLayout(graphModel, treeMode);
 graphLayout.step(60);
+
+function applyTreeMode() {
+  const next = config.treeMode ?? 'resources';
+  if (next === treeMode) return;
+  treeMode = next;
+  graphModel = makeModel(treeMode);
+  graphLayout = makeLayout(graphModel, treeMode);
+  graphLayout.step(40);
+  hoverController.reset?.();
+}
 
 const graphRenderer = new GraphRenderer(layers, palette);
 const particleSystem = new ParticleSystem(particleLayer, palette);
@@ -181,6 +210,8 @@ function handleConfigChange(nextConfig) {
   actorSystem?.setPalette(palette);
   sparkleSystem?.setPalette(palette);
   overlayHud?.setPalette(palette);
+
+  applyTreeMode();
 
   if (graphModel?.maybeRebuild(nextConfig, palette)) {
     graphLayout.reset(graphModel, activityState, nextConfig);
@@ -327,4 +358,16 @@ app.ticker.add(() => {
 
 // Debug handle: lets devtools (and the hidden-tab preview, where rAF is paused) inspect
 // state and pump frames manually via __rst.app.ticker.update(t).
-window.__rst = { app, config, activityState, graphModel, graphLayout, hoverController, performanceMonitor, telemetryInput };
+// graphModel/graphLayout are rebound when the tree mode changes, so expose them via
+// getters — a snapshot object would go stale and point at the discarded model.
+window.__rst = {
+  app,
+  config,
+  activityState,
+  hoverController,
+  performanceMonitor,
+  telemetryInput,
+  get graphModel() { return graphModel; },
+  get graphLayout() { return graphLayout; },
+  get treeMode() { return treeMode; }
+};

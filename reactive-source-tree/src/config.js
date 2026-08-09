@@ -29,7 +29,11 @@ export const DEFAULT_CONFIG = {
   bloom: false,
   bloomStrength: 1,
   trails: true,
-  gravityStrength: 1
+  gravityStrength: 1,
+  // 'resources' = the fixed CPU/RAM/GPU/DISK/NETWORK/AUDIO constellation.
+  // 'processes' = the Gource-style live process ancestry tree (needs the helper).
+  treeMode: 'resources',
+  maxTreeNodes: 220
 };
 
 export const ACTIVITY_KEYS = [

@@ -20,7 +20,9 @@ export class GraphRenderer {
     this.layers.nodeLayer.addChild(this.nodeGraphics);
     // Node halos are batched GPU sprites in the (otherwise unused) glow layer, which sits
     // behind the node cores/rings — so the crisp cores stay on top.
-    this.glowField = new SpriteField(this.layers.glowLayer, 256);
+    // Sized for the process-tree mode, which can carry a few hundred nodes at once
+    // (plus the ones mid fade-out) — all still batched into a handful of draw calls.
+    this.glowField = new SpriteField(this.layers.glowLayer, 640);
 
     this.linkVisual = new LinkVisual(this.linkGraphics);
     this.nodeVisual = new NodeVisual(this.nodeGraphics, this.glowField);
@@ -49,7 +51,11 @@ export class GraphRenderer {
     this.glowField.begin();
 
     const glowStrength = config.lowPerformanceMode ? config.glowStrength * 0.42 : config.glowStrength;
-    const quality = config.qualityScale ?? 1;
+    // Each link pass is a CPU-tessellated curve. The process tree can have hundreds of
+    // links, so scale the effective quality down with link count — the extra glow passes
+    // shed automatically and only the crisp core line survives on a dense tree.
+    const linkLoad = model.links.length > 150 ? 0.5 : model.links.length > 90 ? 0.7 : 1;
+    const quality = (config.qualityScale ?? 1) * linkLoad;
     for (const link of model.links) {
       if ((link.source.visibleFactor ?? 1) <= 0.04 || (link.target.visibleFactor ?? 1) <= 0.04) continue;
       this.linkVisual.draw(link, time, glowStrength, config.lowPerformanceMode, quality);

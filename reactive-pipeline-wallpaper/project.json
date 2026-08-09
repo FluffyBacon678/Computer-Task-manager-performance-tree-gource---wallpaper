@@ -1,0 +1,55 @@
+{
+  "title": "Reactive Pipeline",
+  "description": "A live Task Manager pipeline wallpaper: processes flow through CPU, RAM, GPU, disk, and network stations.",
+  "file": "index.html",
+  "preview": "preview.png",
+  "general": {
+    "properties": {
+      "intensity": {
+        "text": "Intensity",
+        "type": "slider",
+        "value": 1,
+        "min": 0.25,
+        "max": 2,
+        "step": 0.05
+      },
+      "max_processes": {
+        "text": "Max Process Capsules",
+        "type": "slider",
+        "value": 28,
+        "min": 8,
+        "max": 44,
+        "step": 1
+      },
+      "show_labels": {
+        "text": "Process Labels",
+        "type": "bool",
+        "value": true
+      },
+      "enable_telemetry": {
+        "text": "Telemetry WebSocket",
+        "type": "bool",
+        "value": true
+      },
+      "telemetry_url": {
+        "text": "Telemetry URL",
+        "type": "textinput",
+        "value": "ws://127.0.0.1:17890"
+      },
+      "show_hud": {
+        "text": "Overlay HUD",
+        "type": "bool",
+        "value": true
+      },
+      "animation_speed": {
+        "text": "Animation Speed",
+        "type": "slider",
+        "value": 1,
+        "min": 0.25,
+        "max": 2,
+        "step": 0.05
+      }
+    }
+  }
+}
+

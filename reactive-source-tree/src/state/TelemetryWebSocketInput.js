@@ -12,6 +12,7 @@ export class TelemetryWebSocketInput {
     this.liveTree = {
       processes: [],
       drives: [],
+      tree: [],
       updatedAt: 0
     };
   }
@@ -85,6 +86,8 @@ export class TelemetryWebSocketInput {
       this.liveTree = {
         processes: this.sanitizeProcesses(parsed.processes),
         drives: this.sanitizeDrives(parsed.drives),
+        // The ancestry list only rides along when it changed; keep the last one otherwise.
+        tree: parsed.tree ? this.sanitizeTree(parsed.tree) : this.liveTree.tree,
         updatedAt: performance.now()
       };
       this.lastMessageAt = performance.now();
@@ -111,6 +114,27 @@ export class TelemetryWebSocketInput {
         threads: Number.isFinite(Number(process.threads)) ? Number(process.threads) : null,
         score: clamp(Number(process.score ?? Math.max(process.cpu ?? 0, process.ram ?? 0, process.gpu ?? 0, process.disk ?? 0)))
       }));
+  }
+
+  // Whole-machine ancestry: pid/ppid pairs plus the load that sizes each node.
+  sanitizeTree(tree) {
+    if (!Array.isArray(tree)) return [];
+    const out = [];
+    for (const item of tree.slice(0, 600)) {
+      const pid = Number(item?.pid);
+      if (!Number.isFinite(pid) || pid <= 0) continue;
+      const ppid = Number(item?.ppid);
+      out.push({
+        pid,
+        ppid: Number.isFinite(ppid) ? ppid : 0,
+        name: typeof item.name === 'string' && item.name.trim()
+          ? item.name.trim().slice(0, 32)
+          : `pid_${pid}`,
+        cpu: clamp(Number(item.cpu ?? 0)),
+        mem: clamp(Number(item.mem ?? 0))
+      });
+    }
+    return out;
   }
 
   sanitizeDrives(drives) {

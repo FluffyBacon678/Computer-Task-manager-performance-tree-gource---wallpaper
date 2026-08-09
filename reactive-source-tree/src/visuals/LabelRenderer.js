@@ -63,6 +63,9 @@ function shouldShowLabel(node, config) {
   const focused = (node.focus ?? 0) > 0.08 || (node.grab ?? 0) > 0.04;
   if (node.visibleFactor <= 0.22 && !focused) return false;
   if (focused) return true;
+  // The process tree has hundreds of nodes; the model flags the handful worth naming
+  // (freshly spawned + busiest) so we never rasterize hundreds of Text objects.
+  if (node.labelable === false) return false;
   if (node.type === 'root' || node.type === 'category' || node.type === 'live') return true;
   if (config.lowPerformanceMode) return false;
   return config.showLabels && config.showSystemLeafLabels;
