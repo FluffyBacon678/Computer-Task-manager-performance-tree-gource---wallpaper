@@ -50,6 +50,7 @@ export class ProcessTreeModel {
     // Queued {x, y, color} for PulseSystem: a process exiting gets a collapsing ring, so
     // deaths read as events the way spawns do (beam + bloom) instead of quietly fading.
     this.deathEvents = [];
+    this.birthEvents = [];
     this.now = 0;
     this.focusedId = null;
     this.draggedId = null;
@@ -379,6 +380,11 @@ export class ProcessTreeModel {
       const parent = this.nodeById.get(`proc:${node.ppid}`);
       if (parent && this.beamEvents.length < 24) {
         this.beamEvents.push({ sourceId: parent.id, targetId: node.id, color: node.color });
+      }
+      // An expanding shockwave at the birth point: the beam says WHO launched it, the
+      // ring says something happened HERE, and it mirrors the collapsing exit ring.
+      if (this.birthEvents.length < 16) {
+        this.birthEvents.push({ x: node.x, y: node.y, color: node.color });
       }
     }
 

@@ -60,23 +60,35 @@ export class PulseSystem {
     pulse.thickness = options.thickness ?? 1.2;
   }
 
-  // A process exiting leaves a small ring at the spot it occupied — the visual
-  // counterpart to the spawn beam, so the tree's comings and goings read equally.
-  drainDeathEvents(model, config) {
-    if (!model.deathEvents || !model.deathEvents.length) return;
-    for (const event of model.deathEvents) {
-      this.spawn(event.x, event.y, event.color, {
-        maxRadius: 34,
-        maxLife: 0.75,
-        alpha: 0.5 * config.intensity,
-        thickness: 1.5
-      });
+  // Lifecycle rings: a process arriving throws a bright shockwave outward, one exiting
+  // leaves a smaller, dimmer ring behind — so the tree's comings and goings read equally.
+  drainLifecycleEvents(model, config) {
+    if (model.birthEvents?.length) {
+      for (const event of model.birthEvents) {
+        this.spawn(event.x, event.y, event.color, {
+          maxRadius: 52,
+          maxLife: 0.9,
+          alpha: 0.62 * config.intensity,
+          thickness: 2
+        });
+      }
+      model.birthEvents.length = 0;
     }
-    model.deathEvents.length = 0;
+    if (model.deathEvents?.length) {
+      for (const event of model.deathEvents) {
+        this.spawn(event.x, event.y, event.color, {
+          maxRadius: 34,
+          maxLife: 0.75,
+          alpha: 0.5 * config.intensity,
+          thickness: 1.5
+        });
+      }
+      model.deathEvents.length = 0;
+    }
   }
 
   maybeSpawn(model, activityState, config) {
-    this.drainDeathEvents(model, config);
+    this.drainLifecycleEvents(model, config);
     const bass = activityState.value('audioBass');
     const cpu = activityState.value('cpu');
     const disk = activityState.value('disk');

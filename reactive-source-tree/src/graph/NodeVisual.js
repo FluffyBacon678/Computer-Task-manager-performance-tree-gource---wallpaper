@@ -43,14 +43,19 @@ export class NodeVisual {
 
     const activity = node.activity ?? 0;
     const boost = node.glowBoost ?? 1;
+    // Idle nodes still breathe: a small constant term keeps every node alive when the
+    // machine is quiet, and activity scales it up so busy ones visibly throb.
     const pulse = node.type === 'root'
       ? (node.heartbeat ?? 0) * (1.4 + activityState.value('audioBass') * 2.4)
-      : Math.sin(time * 2.4 + node.phase) * activity * 0.75;
+      : Math.sin(time * 2.4 + node.phase) * (0.28 + activity * 0.75);
     const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
       ? (1 - (time - node.birthTime) / 0.3) * 0.5
       : 0;
     const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9 + grab * 0.22));
-    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4 + grab * 0.18) * visible * lifeAlpha;
+    // A slow brightness shimmer, detuned from the size pulse so the two never beat in
+    // lockstep — the field twinkles instead of blinking as one.
+    const shimmer = node.type === 'root' ? 0 : Math.sin(time * 1.13 + node.phase * 2.1) * 0.055;
+    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4 + grab * 0.18 + shimmer) * visible * lifeAlpha;
     // Soft halo → one batched GPU sprite (smooth gradient, GPU fill); crisp core → Graphics.
     const haloMul = (config.lowPerformanceMode ? 0.55 : 1) * config.glowStrength;
     const haloAlpha = Math.min(1, alpha * (0.3 + 0.45 * haloMul) * (node.type === 'root' ? 1.5 : boost));

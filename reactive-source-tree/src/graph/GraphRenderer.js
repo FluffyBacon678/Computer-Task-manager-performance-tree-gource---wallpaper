@@ -34,17 +34,28 @@ export class GraphRenderer {
     this.labelRenderer.setPalette(palette);
   }
 
-  updateVisualInterpolation(model, dt) {
+  updateVisualInterpolation(model, dt, time = 0) {
     const factor = clamp(1 - Math.pow(0.0005, dt));
     for (const node of model.nodes) {
       node.renderX = lerp(node.renderX ?? node.x, node.x, factor);
       node.renderY = lerp(node.renderY ?? node.y, node.y, factor);
       node.renderRadius = lerp(node.renderRadius ?? node.targetRadius, node.targetRadius, factor * 0.82);
+
+      // Render-only sway: each node drifts on its own slow lissajous so the constellation
+      // is never frozen, even when the force sim has settled and everything is idle. Two
+      // detuned frequencies per axis keep it from reading as a uniform throb, and the
+      // amplitude is a couple of pixels — it breathes rather than wobbles.
+      const sway = node.type === 'root' ? 0 : 1.6 + (node.activity ?? 0) * 2.2;
+      if (sway > 0) {
+        const p = node.phase;
+        node.renderX += (Math.sin(time * 0.53 + p) + Math.sin(time * 0.31 + p * 1.7) * 0.6) * sway;
+        node.renderY += (Math.cos(time * 0.47 + p * 1.3) + Math.cos(time * 0.29 + p) * 0.6) * sway;
+      }
     }
   }
 
   render(model, activityState, config, time, dt, worldRotation = 0, worldScale = 1) {
-    this.updateVisualInterpolation(model, dt);
+    this.updateVisualInterpolation(model, dt, time);
 
     this.linkGraphics.clear();
     this.nodeGraphics.clear();
