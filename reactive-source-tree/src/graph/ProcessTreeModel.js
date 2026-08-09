@@ -34,7 +34,6 @@ function formatPercent(value) {
   return `${Math.round(percent)}%`;
 }
 
-const ROOT_ID = 'proc:root';
 const SPAWN_GLOW_SECONDS = 25; // how long a freshly spawned process stays "hot"
 
 export class ProcessTreeModel {
@@ -63,6 +62,9 @@ export class ProcessTreeModel {
     this.build();
   }
 
+  // No synthetic core node: this view is about the processes themselves, so the
+  // top-level processes ARE the roots and the centre stays open. The radial force
+  // keeps the constellation centred without anything pinned at the origin.
   build() {
     this.nodes = [];
     this.links = [];
@@ -71,23 +73,6 @@ export class ProcessTreeModel {
     this.dyingNodes = [];
     this.beamEvents = [];
     this.signature = '';
-
-    this.addNode({
-      id: ROOT_ID,
-      label: 'PC',
-      type: 'root',
-      category: 'core',
-      colorKey: 'core',
-      radius: 20,
-      color: this.palette.colors.core,
-      depth: 0,
-      targetAngle: 0,
-      x: 0,
-      y: 0,
-      fx: 0,
-      fy: 0,
-      labelable: true
-    });
   }
 
   addNode(node) {
@@ -173,13 +158,15 @@ export class ProcessTreeModel {
 
   // Fan the tree out radially: every subtree owns an angular sector sized by how many
   // descendants it has, so siblings spread and families stay together (Gource's look).
-  assignAngles(rootsList, childrenOf, sizeOf) {
+  // Pure computation returning angle/depth per pid — it runs BEFORE the nodes are built
+  // so a newly spawned process can be placed correctly the moment it is created.
+  computeAngles(rootsList, childrenOf, sizeOf) {
+    const angleByPid = new Map();
+    const depthByPid = new Map();
+
     const assign = (pid, start, end, depth) => {
-      const node = this.nodeById.get(`proc:${pid}`);
-      if (node) {
-        node.targetAngle = (start + end) / 2;
-        node.depth = depth;
-      }
+      angleByPid.set(pid, (start + end) / 2);
+      depthByPid.set(pid, depth);
       const kids = childrenOf.get(pid);
       if (!kids || !kids.length) return;
       const total = kids.reduce((sum, kid) => sum + sizeOf.get(kid), 0) || 1;
@@ -198,13 +185,14 @@ export class ProcessTreeModel {
       assign(pid, cursor, cursor + share, 1);
       cursor += share;
     }
+    return { angleByPid, depthByPid };
   }
 
   syncTelemetry(liveTree, config, palette) {
     const tree = Array.isArray(liveTree?.tree) ? liveTree.tree : null;
     if (!config.enableTelemetry || !tree || !tree.length) {
-      // Without the helper there is no ancestry data — keep just the core.
-      if (this.nodes.length > 1) {
+      // Without the helper there is no ancestry data at all, so there is nothing to draw.
+      if (this.nodes.length > 0) {
         this.build();
         return true;
       }
@@ -304,22 +292,8 @@ export class ProcessTreeModel {
     this.nodeById.clear();
     this.dynamicNodeIds.clear();
 
-    const root = this.addNode({
-      id: ROOT_ID,
-      label: 'PC',
-      type: 'root',
-      category: 'core',
-      colorKey: 'core',
-      radius: 20,
-      color: palette.colors.core,
-      depth: 0,
-      targetAngle: 0,
-      x: 0,
-      y: 0,
-      fx: 0,
-      fy: 0,
-      labelable: true
-    });
+    // Angles/depths up front so a brand-new node knows where it belongs immediately.
+    const { angleByPid, depthByPid } = this.computeAngles(rootsList, childrenOf, sizeOf);
 
     const created = [];
     const addProcess = (pid, depth, guard = 0) => {
@@ -329,8 +303,15 @@ export class ProcessTreeModel {
       const id = `proc:${pid}`;
       const colorKey = colorKeyForName(record.name);
       const old = previous.get(id);
-      const angle = old?.targetAngle ?? 0;
+      const angle = angleByPid.get(pid) ?? old?.targetAngle ?? 0;
       const radius = ringRadius(depth);
+      // Where a node starts life: survivors keep their spot; a NEWLY spawned process is
+      // born right on top of the parent that launched it and is then pushed out to its
+      // ring by the layout — so it visibly emerges from its parent (and the spawn beam
+      // stays short instead of streaking across the screen).
+      const parentNode = this.nodeById.get(`proc:${record.ppid}`);
+      const birthX = old ? old.x : parentNode ? parentNode.x + (Math.random() - 0.5) * 16 : Math.cos(angle) * radius;
+      const birthY = old ? old.y : parentNode ? parentNode.y + (Math.random() - 0.5) * 16 : Math.sin(angle) * radius;
       const node = this.addNode({
         id,
         label: record.name,
@@ -346,8 +327,8 @@ export class ProcessTreeModel {
         color: palette.get(colorKey),
         cpuValue: record.cpu,
         memValue: record.mem,
-        x: old?.x ?? Math.cos(angle) * radius,
-        y: old?.y ?? Math.sin(angle) * radius,
+        x: birthX,
+        y: birthY,
         labelable: false
       });
       if (old) {
@@ -357,6 +338,10 @@ export class ProcessTreeModel {
         node.birthTime = old.birthTime;
         node.flare = old.flare ?? 0;
       } else {
+        // Start the render position at the birth point too, otherwise the interpolator
+        // would ease it in from (0,0) and draw a streak across the scene.
+        node.renderX = birthX;
+        node.renderY = birthY;
         node.birthTime = this.now;
       }
       this.dynamicNodeIds.add(id);
@@ -368,22 +353,28 @@ export class ProcessTreeModel {
 
     for (const pid of rootsList) addProcess(pid, 1);
 
-    // Link every node to its parent (or the core for top-level processes).
+    // Link each node to the process that spawned it. Top-level processes have no parent
+    // in view and simply stand on their own — there is no core to tie them to.
     for (const node of created) {
-      const parent = this.nodeById.get(`proc:${node.ppid}`) ?? root;
-      const distance = parent === root ? 132 : 74;
-      this.addLink(parent, node, node.colorKey, parent === root ? 0.85 : 0.62, distance);
+      const parent = this.nodeById.get(`proc:${node.ppid}`);
+      if (!parent) continue;
+      this.addLink(parent, node, node.colorKey, 0.62, 74);
     }
 
-    this.assignAngles(rootsList, childrenOf, sizeOf);
+    // Depths from the sector walk override the recursion depth for any node reached by a
+    // different path, keeping ring placement consistent with the angle assignment.
+    for (const node of created) {
+      const depth = depthByPid.get(node.pid);
+      if (depth !== undefined) node.depth = depth;
+    }
 
     // Newly spawned processes: bloom + a beam travelling out from the parent that
     // launched them, so you SEE what called what.
     for (const pid of spawned) {
       const node = this.nodeById.get(`proc:${pid}`);
       if (!node) continue;
-      const parent = this.nodeById.get(`proc:${node.ppid}`) ?? root;
-      if (this.beamEvents.length < 24) {
+      const parent = this.nodeById.get(`proc:${node.ppid}`);
+      if (parent && this.beamEvents.length < 24) {
         this.beamEvents.push({ sourceId: parent.id, targetId: node.id, color: node.color });
       }
     }
@@ -420,25 +411,6 @@ export class ProcessTreeModel {
     const labelCandidates = [];
 
     for (const node of this.nodes) {
-      if (node.type === 'root') {
-        node.activity = clamp(overall * 0.72 + bass * 0.55);
-        node.value = node.activity;
-        node.color = palette.category('core', bass);
-        node.targetRadius = lerp(17, 29, clamp(bass * 0.8 + overall * 0.4));
-        node.visibleFactor = 1;
-        node.glowBoost = 1;
-        node.heartPhase = ((node.heartPhase ?? 0) + dt * (0.75 + cpuSignal * 1.45)) % 1;
-        const p = node.heartPhase;
-        node.heartbeat =
-          Math.exp(-((p - 0.07) * (p - 0.07)) / 0.0024) +
-          Math.exp(-((p - 0.33) * (p - 0.33)) / 0.004) * 0.55;
-        if (refreshCaptions) {
-          node.caption = 'PC';
-          node.captionDetail = `${this.dynamicNodeIds.size} PROCESSES`;
-        }
-        continue;
-      }
-
       const cpu = clamp(node.cpuValue ?? 0);
       const mem = clamp(node.memValue ?? 0);
       const load = clamp(cpu * 0.75 + mem * 0.45);
@@ -499,7 +471,7 @@ export class ProcessTreeModel {
       if (!node || node.colorKey !== category) continue;
       if (!best || (node.activity ?? 0) > (best.activity ?? 0)) best = node;
     }
-    return best ?? this.nodeById.get(ROOT_ID);
+    return best;
   }
 
   getOuterNodes() {
