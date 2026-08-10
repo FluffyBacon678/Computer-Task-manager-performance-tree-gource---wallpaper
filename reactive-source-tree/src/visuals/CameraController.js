@@ -100,7 +100,9 @@ export class CameraController {
       fitScale = clamp(470 / Math.max(470, this.contentRadius), 0.34, 1);
     }
 
-    const targetScale = baseScale * wideCorrection * fitScale * (1 + load * 0.035 + bass * 0.018);
+    // A whisper of breathing on the beat, scaled by the audio-reactivity setting.
+    const audioGain = config.enableAudio === false ? 0 : (config.audioReactivity ?? 0.6);
+    const targetScale = baseScale * wideCorrection * fitScale * (1 + load * 0.035 + bass * 0.028 * audioGain);
     const driftAmount = config.cameraDrift ? lerp(3, 18, load) : 0;
     const driftX = (this.noise(time * 0.018, 7) - 0.5) * driftAmount;
     const driftY = (this.noise(4, time * 0.015) - 0.5) * driftAmount;

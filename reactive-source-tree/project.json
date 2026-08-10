@@ -1,8 +1,11 @@
 {
   "title": "Reactive Source Tree",
-  "description": "A neon, audio-reactive source-tree system constellation for Wallpaper Engine.",
+  "description": "A live Gource-style visualization of your PC: resource branches, or the real process tree where every process blooms in from whatever spawned it and fades out when it exits. Optional local helper feeds real telemetry.",
   "file": "index.html",
   "preview": "preview.jpg",
+  "type": "web",
+  "contentrating": "Everyone",
+  "tags": ["Abstract"],
   "general": {
     "properties": {
       "intensity": {
@@ -249,6 +252,19 @@
         "min": 30,
         "max": 400,
         "step": 10
+      },
+      "audio_reactivity": {
+        "text": "Music Reactivity",
+        "type": "slider",
+        "value": 0.6,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "audio_beat_rings": {
+        "text": "Beat Rings",
+        "type": "bool",
+        "value": true
       }
     }
   }

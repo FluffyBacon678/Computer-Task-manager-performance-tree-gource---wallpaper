@@ -33,7 +33,12 @@ export const DEFAULT_CONFIG = {
   // 'resources' = the fixed CPU/RAM/GPU/DISK/NETWORK/AUDIO constellation.
   // 'processes' = the Gource-style live process ancestry tree (needs the helper).
   treeMode: 'resources',
-  maxTreeNodes: 220
+  maxTreeNodes: 220,
+  // How strongly music moves the visuals. Deliberately subtle by default: audio only
+  // ever affects presentation (size/brightness/beat rings), never the telemetry values,
+  // so the tree keeps telling the truth about the machine while it breathes to the beat.
+  audioReactivity: 0.6,
+  audioBeatRings: true
 };
 
 export const ACTIVITY_KEYS = [

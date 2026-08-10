@@ -774,6 +774,11 @@ export class GraphModel {
     return this.categoryNodes.get(category);
   }
 
+  // Origin for scene-wide effects (audio beat rings, heat waves): the PC core.
+  getFocalNode() {
+    return this.nodeById.get('root');
+  }
+
   getOuterNodes() {
     return this.nodes.filter((node) => (node.type === 'leaf' || node.type === 'live') && node.visibleFactor > 0.2);
   }

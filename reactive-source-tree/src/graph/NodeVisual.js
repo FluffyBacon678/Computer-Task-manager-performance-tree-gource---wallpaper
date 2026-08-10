@@ -43,6 +43,17 @@ export class NodeVisual {
 
     const activity = node.activity ?? 0;
     const boost = node.glowBoost ?? 1;
+    // Music moves presentation only — size and brightness — never the telemetry values
+    // behind the node, so the tree stays truthful about the machine while it breathes.
+    // Proportional (not additive) so a tiny idle dot swells by the same *fraction* as a
+    // big busy one instead of being overwhelmed.
+    const audioGain = config.enableAudio === false ? 0 : (config.audioReactivity ?? 0.6);
+    const audioSwell = audioGain > 0
+      ? activityState.value('audioBass') * 0.14 + activityState.value('audioMid') * 0.05
+      : 0;
+    const audioLift = audioGain > 0
+      ? activityState.value('audioBass') * 0.1 + activityState.value('audioTreble') * 0.07
+      : 0;
     // Idle nodes still breathe: a small constant term keeps every node alive when the
     // machine is quiet, and activity scales it up so busy ones visibly throb.
     const pulse = node.type === 'root'
@@ -51,11 +62,11 @@ export class NodeVisual {
     const birthFlash = node.birthTime != null && time - node.birthTime < 0.3
       ? (1 - (time - node.birthTime) / 0.3) * 0.5
       : 0;
-    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9 + grab * 0.22));
+    const radius = Math.max(0.5, (node.renderRadius + pulse) * lifeScale * (1 + flare * 0.22 + focus * 0.9 + grab * 0.22 + audioSwell * audioGain));
     // A slow brightness shimmer, detuned from the size pulse so the two never beat in
     // lockstep — the field twinkles instead of blinking as one.
     const shimmer = node.type === 'root' ? 0 : Math.sin(time * 1.13 + node.phase * 2.1) * 0.055;
-    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4 + grab * 0.18 + shimmer) * visible * lifeAlpha;
+    const alpha = Math.min(1, (0.42 + activity * 0.55) * boost + flare * 0.55 + birthFlash + focus * 0.4 + grab * 0.18 + shimmer + audioLift * audioGain) * visible * lifeAlpha;
     // Soft halo → one batched GPU sprite (smooth gradient, GPU fill); crisp core → Graphics.
     const haloMul = (config.lowPerformanceMode ? 0.55 : 1) * config.glowStrength;
     const haloAlpha = Math.min(1, alpha * (0.3 + 0.45 * haloMul) * (node.type === 'root' ? 1.5 : boost));

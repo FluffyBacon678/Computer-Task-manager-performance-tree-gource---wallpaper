@@ -97,13 +97,17 @@ export class PulseSystem {
     const temperature = activityState.value('temperature');
     const gpu = activityState.value('gpu');
     const audio = activityState.value('audioVolume');
-    const root = model.nodeById.get('root');
+    // Beat rings radiate from the scene's focal point: the core in the resource view,
+    // or the busiest process in the tree view (which has no core).
+    const root = model.getFocalNode?.() ?? model.nodeById.get('root');
+    const audioGain = config.enableAudio === false ? 0 : (config.audioReactivity ?? 0.6);
+    const beatsOn = audioGain > 0 && config.audioBeatRings !== false;
 
-    if (root && bass > 0.18 && bass - this.previous.bass > 0.035) {
+    if (beatsOn && root && bass > 0.18 && bass - this.previous.bass > 0.035) {
       this.spawn(root.renderX, root.renderY, this.palette.colors.coreAccent, {
-        maxRadius: lerp(90, 230, bass),
+        maxRadius: lerp(90, 230, bass) * (0.6 + audioGain * 0.4),
         maxLife: lerp(0.8, 1.35, bass),
-        alpha: 0.34 + bass * 0.48,
+        alpha: (0.34 + bass * 0.48) * audioGain,
         thickness: 1.4 + bass * 2
       });
     }

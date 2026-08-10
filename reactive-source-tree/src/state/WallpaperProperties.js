@@ -83,6 +83,8 @@ export class WallpaperProperties {
     c.trails = toBool(propertyValue(properties.trails, c.trails), c.trails);
     c.gravityStrength = clamp(Number(propertyValue(properties.gravity_strength, c.gravityStrength)), 0, 2);
     c.maxTreeNodes = Math.round(clamp(Number(propertyValue(properties.max_tree_nodes, c.maxTreeNodes)), 30, 400));
+    c.audioReactivity = clamp(Number(propertyValue(properties.audio_reactivity, c.audioReactivity)), 0, 2);
+    c.audioBeatRings = toBool(propertyValue(properties.audio_beat_rings, c.audioBeatRings), c.audioBeatRings);
 
     const treeMode = propertyValue(properties.tree_mode, c.treeMode);
     if (typeof treeMode === 'string') c.treeMode = treeMode;

@@ -487,6 +487,18 @@ export class ProcessTreeModel {
     return best;
   }
 
+  // Where scene-wide effects (audio beat rings, heat waves) originate. The resource view
+  // uses its core; this view has none, so the busiest process stands in — beats radiate
+  // from whatever is actually working hardest.
+  getFocalNode() {
+    let best = null;
+    for (const node of this.nodes) {
+      if (node.type !== 'live') continue;
+      if (!best || (node.value ?? 0) > (best.value ?? 0)) best = node;
+    }
+    return best;
+  }
+
   getOuterNodes() {
     return this.nodes.filter((node) => node.type === 'live' && node.visibleFactor > 0.2);
   }
