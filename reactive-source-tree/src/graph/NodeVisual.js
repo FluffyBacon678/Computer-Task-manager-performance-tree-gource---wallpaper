@@ -70,7 +70,12 @@ export class NodeVisual {
     // Soft halo → one batched GPU sprite (smooth gradient, GPU fill); crisp core → Graphics.
     const haloMul = (config.lowPerformanceMode ? 0.55 : 1) * config.glowStrength;
     const haloAlpha = Math.min(1, alpha * (0.3 + 0.45 * haloMul) * (node.type === 'root' ? 1.5 : boost));
-    const haloReach = radius * (node.type === 'leaf' || config.lowPerformanceMode ? 3 : 4.5);
+    // Halo size. A dense tree stacks hundreds of these on top of each other, and the
+    // overlap reads as an out-of-focus fog rather than glow, so the reach tightens as the
+    // scene gets busier (and the user can tighten it further).
+    const denseScene = node.type === 'live' && (config.treeMode === 'processes');
+    const haloBase = node.type === 'leaf' || config.lowPerformanceMode ? 3 : denseScene ? 3.1 : 4.5;
+    const haloReach = radius * haloBase * (config.glowTightness ?? 1);
     this.glowField.draw(node.renderX, node.renderY, haloReach, node.color, haloAlpha);
     this.graphics.beginFill(node.color, alpha);
     this.graphics.drawCircle(node.renderX, node.renderY, radius);

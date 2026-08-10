@@ -38,7 +38,13 @@ export const DEFAULT_CONFIG = {
   // ever affects presentation (size/brightness/beat rings), never the telemetry values,
   // so the tree keeps telling the truth about the machine while it breathes to the beat.
   audioReactivity: 0.6,
-  audioBeatRings: true
+  audioBeatRings: true,
+  // Seconds for a motion trail to fade to ~37%. Short by default: long trails smear the
+  // moving light into haze and read as an out-of-focus image rather than motion.
+  trailLength: 0.09,
+  // Halo size multiplier for node glows. Hundreds of overlapping halos in the process
+  // tree turn into a soft fog, so this lets the glow be tightened for a crisper look.
+  glowTightness: 1
 };
 
 export const ACTIVITY_KEYS = [

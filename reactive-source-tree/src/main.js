@@ -319,7 +319,7 @@ app.ticker.add(() => {
   beamSystem.render(config);
   actorSystem.render(config);
   sparkleSystem.render(config);
-  if (trailsMounted === 'trails') trailRenderer.update(dt);
+  if (trailsMounted === 'trails') trailRenderer.update(dt, config.trailLength ?? 0.09);
   overlayHud.update(activityState, config, rawDt, graphModel);
 
   cursorGraphics.clear();
