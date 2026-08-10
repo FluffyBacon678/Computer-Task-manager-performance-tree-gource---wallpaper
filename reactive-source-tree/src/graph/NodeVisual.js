@@ -47,7 +47,13 @@ export class NodeVisual {
     // behind the node, so the tree stays truthful about the machine while it breathes.
     // Proportional (not additive) so a tiny idle dot swells by the same *fraction* as a
     // big busy one instead of being overwhelmed.
-    const audioGain = config.enableAudio === false ? 0 : (config.audioReactivity ?? 0.6);
+    // The core is EXEMPT: it already answers to bass twice — through its heartbeat
+    // amplitude and its bass-driven target radius — so adding this on top made it swell
+    // and brighten on three multipliers at once and blow out into a white disc (its halo
+    // carries a 1.5x boost, which amplified the extra brightness further).
+    const audioGain = config.enableAudio === false || node.type === 'root'
+      ? 0
+      : (config.audioReactivity ?? 0.6);
     const audioSwell = audioGain > 0
       ? activityState.value('audioBass') * 0.14 + activityState.value('audioMid') * 0.05
       : 0;
