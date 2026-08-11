@@ -31,18 +31,15 @@ export class DemoSignalGenerator {
     const gpu = clamp(0.2 + cpu * 0.22 + n(12, 0.07) * 0.35);
     const temperature = clamp(lerp(0.25, 0.72, gpu * 0.7 + cpu * 0.3));
 
-    this.activityState.merge(
-      {
-        cpu,
-        ram,
-        gpu,
-        disk,
-        netDown,
-        netUp,
-        temperature
-      },
-      0.42
-    );
+    // Only animate channels that no real telemetry is feeding right now. Without this
+    // gate the per-frame demo merge overwhelms the ~5 Hz live messages and the branch
+    // gauges show synthetic load even while the helper is connected.
+    const demo = { cpu, ram, gpu, disk, netDown, netUp, temperature };
+    const synthetic = {};
+    for (const key of Object.keys(demo)) {
+      if (!this.activityState.isLive(key)) synthetic[key] = demo[key];
+    }
+    this.activityState.merge(synthetic, 0.42);
 
     if (!options.hasAudio || !options.enableAudio) {
       const bass = clamp(0.08 + Math.pow(n(18, 0.36), 5) * 0.35);

@@ -27,7 +27,24 @@ export const DEFAULT_CONFIG = {
   adaptiveQuality: true,
   qualityScale: 1,
   bloom: false,
-  bloomStrength: 1
+  bloomStrength: 1,
+  trails: true,
+  gravityStrength: 1,
+  // 'resources' = the fixed CPU/RAM/GPU/DISK/NETWORK/AUDIO constellation.
+  // 'processes' = the Gource-style live process ancestry tree (needs the helper).
+  treeMode: 'resources',
+  maxTreeNodes: 220,
+  // How strongly music moves the visuals. Deliberately subtle by default: audio only
+  // ever affects presentation (size/brightness/beat rings), never the telemetry values,
+  // so the tree keeps telling the truth about the machine while it breathes to the beat.
+  audioReactivity: 0.6,
+  audioBeatRings: true,
+  // Seconds for a motion trail to fade to ~37%. Short by default: long trails smear the
+  // moving light into haze and read as an out-of-focus image rather than motion.
+  trailLength: 0.09,
+  // Halo size multiplier for node glows. Hundreds of overlapping halos in the process
+  // tree turn into a soft fog, so this lets the glow be tightened for a crisper look.
+  glowTightness: 1
 };
 
 export const ACTIVITY_KEYS = [

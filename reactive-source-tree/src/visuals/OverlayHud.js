@@ -1,12 +1,14 @@
 // A small Gource-style overlay: title, clock/date, total load, and a resource colour
 // legend. DOM-based (like the debug overlay) so the text stays crisp.
+// Each legend entry also reads out its live utilisation, the way Task Manager does, so
+// the colour key doubles as the meter: "GPU 55%", "CPU 10%", ...
 const LEGEND = [
-  ['CPU', 'cpu'],
-  ['RAM', 'ram'],
-  ['GPU', 'gpu'],
-  ['DISK', 'disk'],
-  ['NET', 'network'],
-  ['AUDIO', 'audio']
+  ['CPU', 'cpu', (a) => a.value('cpu')],
+  ['RAM', 'ram', (a) => a.value('ram')],
+  ['GPU', 'gpu', (a) => a.value('gpu')],
+  ['DISK', 'disk', (a) => a.value('disk')],
+  ['NET', 'network', (a) => Math.max(a.value('netDown'), a.value('netUp'))],
+  ['AUDIO', 'audio', (a) => a.value('audioVolume')]
 ];
 
 function hex(value) {
@@ -26,19 +28,22 @@ export class OverlayHud {
     this.buildLegend(palette);
   }
 
+  // Build once and keep a handle on each percentage span: the values tick a couple of
+  // times a second, and rewriting innerHTML that often would rebuild the whole legend.
   buildLegend(palette) {
     if (!this.legendEl) return;
     this.legendEl.innerHTML = LEGEND.map(([label, key]) => {
       const color = hex(palette.colors[key]);
-      return `<span class="hud-leg"><i style="background:${color};box-shadow:0 0 6px ${color}"></i>${label}</span>`;
+      return `<span class="hud-leg"><i style="background:${color};box-shadow:0 0 6px ${color}"></i>${label}<b class="hud-val">--%</b></span>`;
     }).join('');
+    this.valueEls = [...this.legendEl.querySelectorAll('.hud-val')];
   }
 
   setPalette(palette) {
     this.buildLegend(palette);
   }
 
-  update(activityState, config, dt) {
+  update(activityState, config, dt, model = null) {
     if (!this.el) return;
     const show = config.showHud;
     this.el.style.display = show ? 'block' : 'none';
@@ -58,7 +63,19 @@ export class OverlayHud {
       }
     }
     if (this.loadEl) {
-      this.loadEl.textContent = `LOAD ${Math.round(activityState.value('overallLoad') * 100)}%`;
+      // The process tree has no core node to carry the count, so it lives here instead.
+      const processCount = model?.dynamicNodeIds?.size ?? 0;
+      const suffix = model?.autoFit && processCount ? `   ${processCount} PROC` : '';
+      this.loadEl.textContent = `LOAD ${Math.round(activityState.value('overallLoad') * 100)}%${suffix}`;
+    }
+
+    if (this.valueEls) {
+      for (let i = 0; i < LEGEND.length; i += 1) {
+        const el = this.valueEls[i];
+        if (!el) continue;
+        const next = `${Math.round(LEGEND[i][2](activityState) * 100)}%`;
+        if (el.textContent !== next) el.textContent = next;
+      }
     }
   }
 }

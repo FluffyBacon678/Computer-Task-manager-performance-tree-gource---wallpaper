@@ -1,4 +1,4 @@
-import { Graphics } from 'pixi.js';
+import { BLEND_MODES, Graphics } from 'pixi.js';
 import { clamp } from '../utils/MathUtils.js';
 
 // A Gource-style activity beam: a bright head shoots from a source (a branch, or the
@@ -21,6 +21,8 @@ export class BeamSystem {
   constructor(parent, palette, maxBeams = 48) {
     this.palette = palette;
     this.graphics = new Graphics();
+    // Beams are pure light — additive so they read as energy over whatever they cross.
+    this.graphics.blendMode = BLEND_MODES.ADD;
     parent.addChild(this.graphics);
     this.beams = Array.from({ length: maxBeams }, () => new Beam());
   }

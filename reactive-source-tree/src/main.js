@@ -16,10 +16,13 @@ import { OverlayHud } from './visuals/OverlayHud.js';
 import { ParticleSystem } from './particles/ParticleSystem.js';
 import { PerformanceMonitor } from './utils/PerformanceMonitor.js';
 import { PointerInput } from './state/PointerInput.js';
+import { ProcessTreeLayout } from './graph/ProcessTreeLayout.js';
+import { ProcessTreeModel } from './graph/ProcessTreeModel.js';
 import { PulseSystem } from './particles/PulseSystem.js';
 import { ResizeHandler } from './utils/ResizeHandler.js';
 import { SparkleSystem } from './particles/SparkleSystem.js';
 import { TelemetryWebSocketInput } from './state/TelemetryWebSocketInput.js';
+import { TrailRenderer } from './visuals/TrailRenderer.js';
 import { WallpaperAudioInput } from './state/WallpaperAudioInput.js';
 import { WallpaperProperties } from './state/WallpaperProperties.js';
 
@@ -52,14 +55,19 @@ const pulseLayer = new Container();
 const nodeLayer = new Container();
 const uiLayer = new Container();
 
-graphLineLayer.blendMode = BLEND_MODES.ADD;
-glowLayer.blendMode = BLEND_MODES.ADD;
-particleLayer.blendMode = BLEND_MODES.ADD;
-pulseLayer.blendMode = BLEND_MODES.ADD;
-nodeLayer.blendMode = BLEND_MODES.ADD;
+// Pixi v7 Containers have no blendMode — additive blending must be set on each rendered
+// object (the SpriteField sprites do it themselves; Graphics set it where they're created).
+// Node gauges stay on normal blending: their dark backing rings would vanish under ADD.
 
-worldLayer.addChild(graphLineLayer, glowLayer, particleLayer, pulseLayer, nodeLayer, uiLayer);
-app.stage.addChild(backgroundLayer, worldLayer);
+// The world is split into three camera-driven containers so the trail composite can sit
+// between them: links/glow behind, moving light (particles/pulses/beams) in the middle
+// via TrailRenderer, nodes/labels crisp on top.
+const trailScene = new Container();
+const worldOverlay = new Container();
+worldLayer.addChild(graphLineLayer, glowLayer);
+trailScene.addChild(particleLayer, pulseLayer);
+worldOverlay.addChild(nodeLayer, uiLayer);
+app.stage.addChild(backgroundLayer, worldLayer, worldOverlay);
 
 const layers = {
   backgroundLayer,
@@ -72,10 +80,38 @@ const layers = {
 };
 
 const backgroundRenderer = new BackgroundRenderer(backgroundLayer, palette, window.innerWidth, window.innerHeight);
-const cameraController = new CameraController(worldLayer, window.innerWidth, window.innerHeight);
-const graphModel = new GraphModel(config, palette);
-const graphLayout = new GraphLayout(graphModel, activityState, config);
+const cameraController = new CameraController([worldLayer, trailScene, worldOverlay], window.innerWidth, window.innerHeight);
+const trailRenderer = new TrailRenderer(app.renderer, trailScene, window.innerWidth, window.innerHeight);
+// Two tree modes share every renderer: "resources" is the fixed CPU/RAM/GPU/... branch
+// constellation; "processes" is the Gource-style live ancestry tree, where the hierarchy
+// is which process spawned which, and nodes bloom in / fade out as processes start and
+// exit. Both expose the same model surface, so only these two bindings change.
+function makeModel(mode) {
+  return mode === 'processes'
+    ? new ProcessTreeModel(config, palette)
+    : new GraphModel(config, palette);
+}
+
+function makeLayout(model, mode) {
+  return mode === 'processes'
+    ? new ProcessTreeLayout(model, activityState, config)
+    : new GraphLayout(model, activityState, config);
+}
+
+let treeMode = config.treeMode ?? 'resources';
+let graphModel = makeModel(treeMode);
+let graphLayout = makeLayout(graphModel, treeMode);
 graphLayout.step(60);
+
+function applyTreeMode() {
+  const next = config.treeMode ?? 'resources';
+  if (next === treeMode) return;
+  treeMode = next;
+  graphModel = makeModel(treeMode);
+  graphLayout = makeLayout(graphModel, treeMode);
+  graphLayout.step(40);
+  hoverController.reset?.();
+}
 
 const graphRenderer = new GraphRenderer(layers, palette);
 const particleSystem = new ParticleSystem(particleLayer, palette);
@@ -129,12 +165,33 @@ function applyBloom() {
   app.stage.filters = config.bloom && bloomFilter ? [bloomFilter] : null;
 }
 
+// Motion trails: when on, the trailScene is rendered through the ping-pong trail
+// textures and only the composite sprite is on stage; when off, the trailScene itself
+// is mounted in the same z-slot and renders directly (no extra passes).
+let trailsMounted = null;
+
+function applyTrails() {
+  const mode = config.trails && !config.lowPerformanceMode ? 'trails' : 'direct';
+  if (trailsMounted === mode) return;
+  trailsMounted = mode;
+  const slot = () => app.stage.getChildIndex(worldOverlay);
+  if (mode === 'trails') {
+    if (trailScene.parent) app.stage.removeChild(trailScene);
+    if (!trailRenderer.sprite.parent) app.stage.addChildAt(trailRenderer.sprite, slot());
+  } else {
+    if (trailRenderer.sprite.parent) app.stage.removeChild(trailRenderer.sprite);
+    if (!trailScene.parent) app.stage.addChildAt(trailScene, slot());
+  }
+}
+
 const cursorGraphics = new Graphics();
+cursorGraphics.blendMode = BLEND_MODES.ADD;
 glowLayer.addChild(cursorGraphics);
 
 new ResizeHandler(app, (width, height) => {
   backgroundRenderer.resize(width, height);
   cameraController.resize(width, height);
+  trailRenderer.resize(width, height);
 });
 
 let time = 0;
@@ -154,16 +211,20 @@ function handleConfigChange(nextConfig) {
   sparkleSystem?.setPalette(palette);
   overlayHud?.setPalette(palette);
 
+  applyTreeMode();
+
   if (graphModel?.maybeRebuild(nextConfig, palette)) {
     graphLayout.reset(graphModel, activityState, nextConfig);
   }
 
   applyRenderScale();
   applyBloom();
+  applyTrails();
 }
 
-// Apply the initial bloom state (WallpaperProperties fires handleConfigChange afterwards).
+// Apply the initial bloom/trail state (WallpaperProperties fires handleConfigChange afterwards).
 applyBloom();
+applyTrails();
 
 function updateDebugOverlay(dt) {
   if (!debugOverlay) return;
@@ -212,15 +273,22 @@ app.ticker.add(() => {
 
   pointerInput.update(rawDt);
   const cameraScale = cameraController.scale || 1;
-  const pointerWorldX = (pointerInput.x - cameraController.x) / cameraScale;
-  const pointerWorldY = (pointerInput.y - cameraController.y) / cameraScale;
+  // Screen -> world: undo the camera translation, then the gravity lean rotation,
+  // then the scale (inverse of the container transform).
+  const camRelX = pointerInput.x - cameraController.x;
+  const camRelY = pointerInput.y - cameraController.y;
+  const camCos = Math.cos(cameraController.rotation || 0);
+  const camSin = Math.sin(cameraController.rotation || 0);
+  const pointerWorldX = (camRelX * camCos + camRelY * camSin) / cameraScale;
+  const pointerWorldY = (-camRelX * camSin + camRelY * camCos) / cameraScale;
   const pointerActive = pointerInput.influence > 0.01 && config.mouseInteraction !== 'off';
   hoverController.update(
     graphModel,
     pointerWorldX,
     pointerWorldY,
     pointerActive && config.mouseInteraction === 'focus',
-    rawDt
+    rawDt,
+    pointerInput
   );
   graphLayout.setPointer(
     pointerWorldX,
@@ -234,7 +302,7 @@ app.ticker.add(() => {
   graphLayout.pointer.focusRadius = 150;
 
   graphLayout.step(config.lowPerformanceMode ? 1 : 2);
-  cameraController.update(activityState, config, time, rawDt);
+  cameraController.update(activityState, config, time, rawDt, graphModel);
 
   backgroundRenderer.render(activityState, config, time);
   edgeParticleSystem.update(graphModel, activityState, config, dt);
@@ -244,23 +312,32 @@ app.ticker.add(() => {
   beamSystem.update(graphModel, config, dt);
   sparkleSystem.update(graphModel, activityState, config, dt);
 
-  graphRenderer.render(graphModel, activityState, config, time, rawDt);
+  graphRenderer.render(graphModel, activityState, config, time, rawDt, cameraController.rotation, cameraController.scale);
   edgeParticleSystem.render(time, config);
   particleSystem.render(config);
   pulseSystem.render(config);
   beamSystem.render(config);
   actorSystem.render(config);
   sparkleSystem.render(config);
-  overlayHud.update(activityState, config, rawDt);
+  if (trailsMounted === 'trails') trailRenderer.update(dt, config.trailLength ?? 0.09);
+  overlayHud.update(activityState, config, rawDt, graphModel);
 
   cursorGraphics.clear();
   if (pointerActive) {
-    const cursorColor = config.mouseInteraction === 'repel' ? palette.colors.audio : palette.colors.coreAccent;
+    const cursorColor = graphModel.draggedId
+      ? palette.colors.core
+      : config.mouseInteraction === 'repel'
+        ? palette.colors.audio
+        : palette.colors.coreAccent;
     const cursorAlpha = pointerInput.influence;
     cursorGraphics.lineStyle(1.4, cursorColor, 0.42 * cursorAlpha);
     cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 15 + Math.sin(time * 4) * 3);
     cursorGraphics.lineStyle(0.7, cursorColor, 0.18 * cursorAlpha);
     cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 28);
+    if (graphModel.draggedId) {
+      cursorGraphics.lineStyle(1, cursorColor, 0.52 * cursorAlpha);
+      cursorGraphics.drawCircle(pointerWorldX, pointerWorldY, 42);
+    }
   }
 
   performanceMonitor.update(rawDt);
@@ -276,4 +353,21 @@ app.ticker.add(() => {
     telemetryStatus: telemetryInput.status
   });
   updateDebugOverlay(rawDt);
+  pointerInput.endFrame();
 });
+
+// Debug handle: lets devtools (and the hidden-tab preview, where rAF is paused) inspect
+// state and pump frames manually via __rst.app.ticker.update(t).
+// graphModel/graphLayout are rebound when the tree mode changes, so expose them via
+// getters — a snapshot object would go stale and point at the discarded model.
+window.__rst = {
+  app,
+  config,
+  activityState,
+  hoverController,
+  performanceMonitor,
+  telemetryInput,
+  get graphModel() { return graphModel; },
+  get graphLayout() { return graphLayout; },
+  get treeMode() { return treeMode; }
+};

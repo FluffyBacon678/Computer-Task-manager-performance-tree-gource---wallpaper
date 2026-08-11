@@ -16,6 +16,18 @@ function pct(value) {
   return `${Math.round(p)}%`;
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
 // Expanded, readable card shown for the hovered/focused node.
 function detailCaption(node) {
   if (node.liveKind === 'process' && node.liveStats) {
@@ -23,20 +35,37 @@ function detailCaption(node) {
     const meta = [];
     if (Number.isFinite(s.pid)) meta.push(`PID ${s.pid}`);
     if (Number.isFinite(s.threads) && s.threads > 0) meta.push(`${s.threads} threads`);
+    const home = node.telemetryMetric ? `${String(node.telemetryMetric).toUpperCase()} NODE ${pct(node.value)}` : null;
     const lines = [
       node.label,
+      home,
       `CPU ${pct(s.cpu)}   RAM ${pct(s.ram)}`,
       `GPU ${pct(s.gpu)}   DISK ${pct(s.disk)}`
-    ];
+    ].filter(Boolean);
     if (meta.length) lines.push(meta.join(' · '));
     return lines.join('\n');
+  }
+  if (node.liveKind === 'drive' && node.liveStats) {
+    const s = node.liveStats;
+    const used = formatBytes(s.usedBytes);
+    const size = formatBytes(s.sizeBytes);
+    return [
+      node.label,
+      used && size ? `${used} / ${size} (${pct(s.used)})` : `USED ${pct(s.used)}`,
+      `ACTIVITY ${pct(s.activity)}`
+    ].join('\n');
   }
   return captionText(node);
 }
 
 function shouldShowLabel(node, config) {
   if (!config.showLabels) return false;
-  if (node.visibleFactor <= 0.22) return false;
+  const focused = (node.focus ?? 0) > 0.08 || (node.grab ?? 0) > 0.04;
+  if (node.visibleFactor <= 0.22 && !focused) return false;
+  if (focused) return true;
+  // The process tree has hundreds of nodes; the model flags the handful worth naming
+  // (freshly spawned + busiest) so we never rasterize hundreds of Text objects.
+  if (node.labelable === false) return false;
   if (node.type === 'root' || node.type === 'category' || node.type === 'live') return true;
   if (config.lowPerformanceMode) return false;
   return config.showLabels && config.showSystemLeafLabels;
@@ -98,7 +127,12 @@ export class LabelRenderer {
     }
   }
 
-  update(nodes, config, dt = 0.016) {
+  update(nodes, config, dt = 0.016, worldRotation = 0, worldScale = 1) {
+    // Labels live inside the camera-scaled world, so a zoomed-out view would shrink the
+    // text below readability. Counter-scaling keeps captions at a constant SCREEN size
+    // no matter how far the camera pulls back to fit a deep tree; the declutter pass
+    // then simply shows fewer of them rather than a field of unreadable specks.
+    const zoomComp = 1 / Math.max(0.35, Math.min(1.2, worldScale));
     const wanted = new Set();
     this.container.visible = true;
     this.candidates.length = 0;
@@ -134,7 +168,7 @@ export class LabelRenderer {
       const anchorY = vertical < -0.25 ? 1 : vertical > 0.25 ? 0 : 0.5;
       const activityAlpha = clamp(0.48 + node.activity * 0.46);
 
-      const focus = node.focus ?? 0;
+      const focus = Math.max(node.focus ?? 0, node.grab ?? 0);
       const focused = focus > 0.4;
 
       const nextText = focused ? detailCaption(node) : captionText(node);
@@ -145,6 +179,9 @@ export class LabelRenderer {
       label.x = node.renderX + horizontal * outward;
       label.y = node.renderY + vertical * outward;
       label.anchor.set(anchorX, anchorY);
+      // Counter-rotate against the camera's gravity lean so text stays upright while
+      // its position swings with the tree.
+      label.rotation = -worldRotation;
       const baseScale = node.type === 'root' ? 1.05 : node.type === 'category' ? 0.98 : node.type === 'live' ? 0.9 : 0.78;
       // Store the target alpha; the actual alpha is driven by the declutter fade below.
       label.baseAlpha = focused
@@ -152,7 +189,7 @@ export class LabelRenderer {
         : node.type === 'leaf'
           ? clamp(0.32 + node.activity * 0.46) * node.visibleFactor
           : activityAlpha * node.visibleFactor;
-      label.scale.set(baseScale * (1 + focus * 0.9));
+      label.scale.set(baseScale * zoomComp * (1 + focus * 0.9));
 
       if (focused) {
         // Always show the focused card, on top of everything.

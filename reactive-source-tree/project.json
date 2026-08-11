@@ -1,8 +1,11 @@
 {
   "title": "Reactive Source Tree",
-  "description": "A neon, audio-reactive source-tree system constellation for Wallpaper Engine.",
+  "description": "A live Gource-style visualization of your PC: resource branches, or the real process tree where every process blooms in from whatever spawned it and fades out when it exits. Optional local helper feeds real telemetry.",
   "file": "index.html",
-  "preview": "preview.png",
+  "preview": "preview.jpg",
+  "type": "web",
+  "contentrating": "Everyone",
+  "tags": ["Abstract"],
   "general": {
     "properties": {
       "intensity": {
@@ -212,6 +215,71 @@
         "value": 1,
         "min": 0,
         "max": 2,
+        "step": 0.05
+      },
+      "trails": {
+        "text": "Motion Trails",
+        "type": "bool",
+        "value": true
+      },
+      "gravity_strength": {
+        "text": "Gravity (lean toward load)",
+        "type": "slider",
+        "value": 1,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "tree_mode": {
+        "text": "Tree Mode",
+        "type": "combo",
+        "value": "resources",
+        "options": [
+          {
+            "label": "Resources (CPU/RAM/GPU branches)",
+            "value": "resources"
+          },
+          {
+            "label": "Processes (live spawn tree, needs helper)",
+            "value": "processes"
+          }
+        ]
+      },
+      "max_tree_nodes": {
+        "text": "Max Tree Nodes (process mode)",
+        "type": "slider",
+        "value": 220,
+        "min": 30,
+        "max": 400,
+        "step": 10
+      },
+      "audio_reactivity": {
+        "text": "Music Reactivity",
+        "type": "slider",
+        "value": 0.6,
+        "min": 0,
+        "max": 2,
+        "step": 0.05
+      },
+      "audio_beat_rings": {
+        "text": "Beat Rings",
+        "type": "bool",
+        "value": true
+      },
+      "trail_length": {
+        "text": "Trail Length (lower = sharper)",
+        "type": "slider",
+        "value": 0.09,
+        "min": 0.02,
+        "max": 0.4,
+        "step": 0.01
+      },
+      "glow_tightness": {
+        "text": "Glow Tightness (lower = sharper)",
+        "type": "slider",
+        "value": 1,
+        "min": 0.5,
+        "max": 1.5,
         "step": 0.05
       }
     }

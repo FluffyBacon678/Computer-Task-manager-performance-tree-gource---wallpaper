@@ -1,4 +1,4 @@
-import { Graphics } from 'pixi.js';
+import { BLEND_MODES, Graphics } from 'pixi.js';
 import { clamp, lerp } from '../utils/MathUtils.js';
 
 class Pulse {
@@ -20,6 +20,8 @@ export class PulseSystem {
   constructor(parent, palette, maxPulses = 70) {
     this.palette = palette;
     this.graphics = new Graphics();
+    // Pulse rings are pure light — additive so overlapping shockwaves brighten.
+    this.graphics.blendMode = BLEND_MODES.ADD;
     parent.addChild(this.graphics);
     this.pulses = Array.from({ length: maxPulses }, () => new Pulse());
     this.previous = {
@@ -58,7 +60,35 @@ export class PulseSystem {
     pulse.thickness = options.thickness ?? 1.2;
   }
 
+  // Lifecycle rings: a process arriving throws a bright shockwave outward, one exiting
+  // leaves a smaller, dimmer ring behind — so the tree's comings and goings read equally.
+  drainLifecycleEvents(model, config) {
+    if (model.birthEvents?.length) {
+      for (const event of model.birthEvents) {
+        this.spawn(event.x, event.y, event.color, {
+          maxRadius: 52,
+          maxLife: 0.9,
+          alpha: 0.62 * config.intensity,
+          thickness: 2
+        });
+      }
+      model.birthEvents.length = 0;
+    }
+    if (model.deathEvents?.length) {
+      for (const event of model.deathEvents) {
+        this.spawn(event.x, event.y, event.color, {
+          maxRadius: 34,
+          maxLife: 0.75,
+          alpha: 0.5 * config.intensity,
+          thickness: 1.5
+        });
+      }
+      model.deathEvents.length = 0;
+    }
+  }
+
   maybeSpawn(model, activityState, config) {
+    this.drainLifecycleEvents(model, config);
     const bass = activityState.value('audioBass');
     const cpu = activityState.value('cpu');
     const disk = activityState.value('disk');
@@ -67,13 +97,17 @@ export class PulseSystem {
     const temperature = activityState.value('temperature');
     const gpu = activityState.value('gpu');
     const audio = activityState.value('audioVolume');
-    const root = model.nodeById.get('root');
+    // Beat rings radiate from the scene's focal point: the core in the resource view,
+    // or the busiest process in the tree view (which has no core).
+    const root = model.getFocalNode?.() ?? model.nodeById.get('root');
+    const audioGain = config.enableAudio === false ? 0 : (config.audioReactivity ?? 0.6);
+    const beatsOn = audioGain > 0 && config.audioBeatRings !== false;
 
-    if (root && bass > 0.18 && bass - this.previous.bass > 0.035) {
+    if (beatsOn && root && bass > 0.18 && bass - this.previous.bass > 0.035) {
       this.spawn(root.renderX, root.renderY, this.palette.colors.coreAccent, {
-        maxRadius: lerp(90, 230, bass),
+        maxRadius: lerp(90, 230, bass) * (0.6 + audioGain * 0.4),
         maxLife: lerp(0.8, 1.35, bass),
-        alpha: 0.34 + bass * 0.48,
+        alpha: (0.34 + bass * 0.48) * audioGain,
         thickness: 1.4 + bass * 2
       });
     }

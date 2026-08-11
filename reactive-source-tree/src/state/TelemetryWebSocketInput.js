@@ -7,10 +7,12 @@ export class TelemetryWebSocketInput {
     this.socket = null;
     this.status = 'off';
     this.retryAt = 0;
+    this.retryDelay = 2500;
     this.lastMessageAt = 0;
     this.liveTree = {
       processes: [],
       drives: [],
+      tree: [],
       updatedAt: 0
     };
   }
@@ -33,18 +35,29 @@ export class TelemetryWebSocketInput {
   }
 
   connect() {
+    this.status = 'connecting';
+    let socket;
     try {
-      this.status = 'connecting';
-      this.socket = new WebSocket(this.config.telemetryUrl);
-      this.socket.addEventListener('open', () => {
-        this.status = 'connected';
-      });
-      this.socket.addEventListener('message', (event) => this.handleMessage(event.data));
-      this.socket.addEventListener('close', () => this.scheduleReconnect());
-      this.socket.addEventListener('error', () => this.scheduleReconnect());
+      socket = new WebSocket(this.config.telemetryUrl);
     } catch {
       this.scheduleReconnect();
+      return;
     }
+    this.socket = socket;
+    // Guard every handler against a stale socket: close() nulls this.socket first, so
+    // events from an intentionally closed socket can't schedule spurious reconnects.
+    socket.addEventListener('open', () => {
+      if (this.socket === socket) this.status = 'connected';
+    });
+    socket.addEventListener('message', (event) => {
+      if (this.socket === socket) this.handleMessage(event.data);
+    });
+    socket.addEventListener('close', () => {
+      if (this.socket === socket) this.scheduleReconnect();
+    });
+    socket.addEventListener('error', () => {
+      if (this.socket === socket) this.scheduleReconnect();
+    });
   }
 
   handleMessage(data) {
@@ -55,6 +68,8 @@ export class TelemetryWebSocketInput {
         return;
       }
 
+      // live=true marks these channels as real so the demo generator stops animating
+      // them; null channels (e.g. GPU on unsupported hardware) stay demo-driven.
       this.activityState.merge(
         {
           cpu: parsed.cpu,
@@ -65,15 +80,18 @@ export class TelemetryWebSocketInput {
           netUp: parsed.netUp,
           temperature: parsed.temperature
         },
-        1
+        1,
+        true
       );
       this.liveTree = {
         processes: this.sanitizeProcesses(parsed.processes),
         drives: this.sanitizeDrives(parsed.drives),
+        // The ancestry list only rides along when it changed; keep the last one otherwise.
+        tree: parsed.tree ? this.sanitizeTree(parsed.tree) : this.liveTree.tree,
         updatedAt: performance.now()
       };
-      this.activityState.telemetryFreshness = 2;
       this.lastMessageAt = performance.now();
+      this.retryDelay = 2500;
       this.status = 'connected';
     } catch {
       this.status = 'bad-data';
@@ -98,6 +116,27 @@ export class TelemetryWebSocketInput {
       }));
   }
 
+  // Whole-machine ancestry: pid/ppid pairs plus the load that sizes each node.
+  sanitizeTree(tree) {
+    if (!Array.isArray(tree)) return [];
+    const out = [];
+    for (const item of tree.slice(0, 600)) {
+      const pid = Number(item?.pid);
+      if (!Number.isFinite(pid) || pid <= 0) continue;
+      const ppid = Number(item?.ppid);
+      out.push({
+        pid,
+        ppid: Number.isFinite(ppid) ? ppid : 0,
+        name: typeof item.name === 'string' && item.name.trim()
+          ? item.name.trim().slice(0, 32)
+          : `pid_${pid}`,
+        cpu: clamp(Number(item.cpu ?? 0)),
+        mem: clamp(Number(item.mem ?? 0))
+      });
+    }
+    return out;
+  }
+
   sanitizeDrives(drives) {
     if (!Array.isArray(drives)) return [];
     return drives
@@ -116,20 +155,18 @@ export class TelemetryWebSocketInput {
   scheduleReconnect() {
     this.close();
     this.status = 'waiting';
-    this.retryAt = performance.now() + 2500;
+    this.retryAt = performance.now() + this.retryDelay;
+    // Back off while the helper is absent (most installs) so an always-on wallpaper
+    // isn't dialing a dead port every 2.5s forever; resets on the next live message.
+    this.retryDelay = Math.min(this.retryDelay * 1.7, 30000);
   }
 
   close() {
-    if (this.socket) {
-      const socket = this.socket;
-      this.socket = null;
-      socket.onopen = null;
-      socket.onmessage = null;
-      socket.onclose = null;
-      socket.onerror = null;
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-        socket.close();
-      }
+    const socket = this.socket;
+    if (!socket) return;
+    this.socket = null;
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+      socket.close();
     }
   }
 }

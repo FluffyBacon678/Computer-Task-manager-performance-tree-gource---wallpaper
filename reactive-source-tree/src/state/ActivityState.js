@@ -22,7 +22,9 @@ export class ActivityState {
     this.signals = Object.fromEntries(
       ACTIVITY_KEYS.map((key) => [key, new SmoothedValue(0, smoothingByKey[key] ?? 0.1)])
     );
-    this.telemetryFreshness = 0;
+    // Channels currently fed by real telemetry (key -> seconds until considered stale).
+    // The demo generator skips live channels so it only animates what nothing real feeds.
+    this.liveUntil = new Map();
   }
 
   setRaw(key, value) {
@@ -30,16 +32,25 @@ export class ActivityState {
     this.signals[key].set(value);
   }
 
-  merge(values = {}, weight = 1) {
+  merge(values = {}, weight = 1, live = false) {
     for (const [key, value] of Object.entries(values)) {
       if (!this.signals[key] || value === null || value === undefined) continue;
+      if (live) this.liveUntil.set(key, 2.5);
       const current = this.signals[key].raw;
       this.signals[key].set(current + (clamp(value) - current) * clamp(weight));
     }
   }
 
+  isLive(key) {
+    return this.liveUntil.has(key);
+  }
+
   update(dt, speed = 1) {
-    this.telemetryFreshness = Math.max(0, this.telemetryFreshness - dt);
+    for (const [key, remaining] of this.liveUntil) {
+      const next = remaining - dt;
+      if (next <= 0) this.liveUntil.delete(key);
+      else this.liveUntil.set(key, next);
+    }
     this.computeOverallRaw();
 
     for (const key of ACTIVITY_KEYS) {

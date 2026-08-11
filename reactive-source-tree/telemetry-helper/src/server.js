@@ -21,9 +21,16 @@ const processCounterSampler = new ProcessCounterSampler();
 
 let richTelemetryCache = {
   processes: [],
-  drives: []
+  drives: [],
+  tree: []
 };
+// The full ancestry list (pid/ppid/name + load) powering the Gource-style process tree.
+// It is large compared to the rest of the payload, so it is only attached to a broadcast
+// when it actually changed rather than on every 200ms tick.
+let treeSeq = 0;
+let lastBroadcastTreeSeq = -1;
 let lastRichTelemetryAt = 0;
+let lastTreeSignature = '';
 let richTelemetryInFlight = false;
 let loggedRichTelemetryReady = false;
 
@@ -147,9 +154,30 @@ async function collectRichTelemetry(globalDiskActivity) {
       .slice(0, MAX_DRIVES)
     : [];
 
+  // Whole-machine ancestry for the process-tree view: every process, but only the four
+  // fields the tree needs, with percentages rounded to keep the payload compact.
+  const treeList = processes.status === 'fulfilled' && Array.isArray(processes.value.list)
+    ? processes.value.list
+      .filter((process) => Number.isFinite(process.pid) && process.pid > 0)
+      .map((process) => ({
+        pid: process.pid,
+        ppid: Number.isFinite(process.parentPid) ? process.parentPid : 0,
+        name: sanitizeName(process.name, 'process'),
+        cpu: Math.round(normalizePercent(process.cpu ?? process.pcpu) * 1000) / 1000,
+        mem: Math.round(normalizePercent(process.mem ?? process.pmem) * 1000) / 1000
+      }))
+    : [];
+
+  const treeSignature = treeList.map((item) => item.pid).join(',');
+  if (treeSignature !== lastTreeSignature) {
+    lastTreeSignature = treeSignature;
+    treeSeq += 1;
+  }
+
   richTelemetryCache = {
     processes: normalizedProcesses,
-    drives: normalizedDrives
+    drives: normalizedDrives,
+    tree: treeList
   };
   lastRichTelemetryAt = Date.now();
 
@@ -247,10 +275,21 @@ async function collectTelemetry() {
       });
   }
 
+  // si.graphics() utilization is often null outside NVIDIA. Fall back to the GPU engine
+  // performance counters (sum of per-PID max-engine utilization — approximate but real),
+  // so the GPU branch stays live on AMD/Intel machines too.
+  let counterGpu = null;
+  const { gpuByPid } = processCounterSampler.sample();
+  if (gpuByPid.size > 0) {
+    let sum = 0;
+    for (const value of gpuByPid.values()) sum += value;
+    counterGpu = clamp(sum / 100);
+  }
+
   return {
     cpu,
     ram,
-    gpu: slowMetricsCache.gpu,
+    gpu: slowMetricsCache.gpu ?? counterGpu,
     disk,
     netDown: normalizeBytesPerSecond(network.rx, 60 * 1024 * 1024),
     netUp: normalizeBytesPerSecond(network.tx, 25 * 1024 * 1024),
@@ -258,6 +297,15 @@ async function collectTelemetry() {
     processes: richTelemetryCache.processes,
     drives: richTelemetryCache.drives
   };
+}
+
+// Attach the ancestry list only when it changed since the last broadcast.
+function withTreeIfChanged(telemetry) {
+  if (treeSeq !== lastBroadcastTreeSeq) {
+    lastBroadcastTreeSeq = treeSeq;
+    return { ...telemetry, tree: richTelemetryCache.tree };
+  }
+  return telemetry;
 }
 
 const server = new WebSocketServer({ host: HOST, port: PORT });
@@ -268,6 +316,8 @@ server.on('listening', () => {
 
 server.on('connection', (socket) => {
   socket.send(JSON.stringify({ type: 'hello', ok: true }));
+  // A late joiner needs the ancestry list even if it has not changed recently.
+  lastBroadcastTreeSeq = -1;
 });
 
 async function broadcastTelemetry() {
@@ -275,7 +325,7 @@ async function broadcastTelemetry() {
 
   try {
     const telemetry = await collectTelemetry();
-    const payload = JSON.stringify(telemetry);
+    const payload = JSON.stringify(withTreeIfChanged(telemetry));
     for (const client of server.clients) {
       if (client.readyState === 1) {
         client.send(payload);

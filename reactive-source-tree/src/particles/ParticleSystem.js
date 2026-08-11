@@ -59,9 +59,9 @@ export class ParticleSystem {
       this.spawnAccumulator -= 1;
       const category = weightedPick(categoryWeights.map((item) => ({
         ...item,
-        weight: item.weight * (0.2 + this.categoryActivity(categoryValue(item.value), activityState) * 1.5)
+        weight: item.weight * (0.2 + this.categoryActivity(item.value, activityState) * 1.5)
       })));
-      const node = category === 'core' ? model.nodeById.get('root') : model.getCategoryNode(category);
+      const node = model.getCategoryNode(category);
       if (!node) continue;
       const activity = this.categoryActivity(category, activityState);
       const outward = randomRange(0, 1) > 0.22;
@@ -124,8 +124,4 @@ export class ParticleSystem {
   activeCount() {
     return this.pool.activeCount();
   }
-}
-
-function categoryValue(category) {
-  return category;
 }
